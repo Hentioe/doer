@@ -1,0 +1,78 @@
+tasks {
+    // 一个包含参数、选项、环境变量和用户的例子
+    hello {
+        - "echo Hello {name}! My age is {age}. The env FOO is $FOO."
+        arg name
+        opt age="18" // 应该允许数字类型
+        user root
+        env {
+            FOO bar
+        }
+    }
+    // 一个让依赖任务在后台运行的例子
+    ping {
+        - "echo starting ping..."
+        - "ping localhost"
+    }
+    start-ping {
+        - "echo ping will start in background..."
+        dep ping {
+            background
+            // background #true // <- 或手动指定为 true
+        }
+    }
+    // 一个多命令任务的例子
+    precommit {
+        - "cargo fmt --all -- --check"
+        - "cargo clippy --all-targets -- -D warnings"
+    }
+    // 应该允许无命令任务
+    /-prepush {
+        dep precommit
+        dep test
+    }
+    format "cargo fmt"
+    build "cargo build"
+    test {
+        - "cargo test --all"
+        dep format
+    }
+    cleanup "cargo clean"
+    install {
+        - "cargo install --path {path} --bin {bin}"
+        arg path
+        opt bin=doer
+        dep test
+        dep add-cap {
+            arg "{bin}"
+            opt mode=release
+        }
+    }
+    run {
+        - "cargo run --bin {bin}"
+        arg bin
+        dep build
+        dep add-cap {
+            arg "{bin}"
+        }
+    }
+    release {
+        - "cargo build --bin {bin} --release"
+        arg bin
+        dep test
+        dep add-cap {
+            arg "{bin}"
+            opt mode=release
+        }
+        env {
+            RUST_BACKTRACE full
+        }
+    }
+    add-cap {
+        - "setcap 'cap_sys_nice=+ep' {bin}"
+        cwd "target/{mode}"
+        arg bin
+        opt mode=debug
+        user root
+    }
+}
