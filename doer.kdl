@@ -3,7 +3,7 @@ tasks {
     hello {
         - "echo Hello {name}! My age is {age}. The env FOO is $FOO."
         arg name
-        opt age="18" // 应该允许数字类型
+        opt age=18
         user root
         env {
             FOO bar

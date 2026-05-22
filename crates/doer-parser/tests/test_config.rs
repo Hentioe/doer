@@ -156,6 +156,41 @@ fn opt_no_key() {
     assert!(format!("{:#}", err).contains("opt has no key"));
 }
 
+#[test]
+fn opt_integer_value() {
+    let doc = parse_doc(r#"opt count=5"#);
+    let node = first_node(&doc);
+    let opt = parse_opt(node, "test").unwrap();
+    assert_eq!(opt.name, "count");
+    assert_eq!(opt.value, "5");
+}
+
+#[test]
+fn opt_float_value() {
+    let doc = parse_doc(r#"opt ratio=3.14"#);
+    let node = first_node(&doc);
+    let opt = parse_opt(node, "test").unwrap();
+    assert_eq!(opt.name, "ratio");
+    assert_eq!(opt.value, "3.14");
+}
+
+#[test]
+fn opt_negative_integer_value() {
+    let doc = parse_doc(r#"opt offset=-1"#);
+    let node = first_node(&doc);
+    let opt = parse_opt(node, "test").unwrap();
+    assert_eq!(opt.name, "offset");
+    assert_eq!(opt.value, "-1");
+}
+
+#[test]
+fn opt_bool_value_is_rejected() {
+    let doc = parse_doc(r#"opt flag=#true"#);
+    let node = first_node(&doc);
+    let err = parse_opt(node, "test").unwrap_err();
+    assert!(format!("{:#}", err).contains("not a string or number"));
+}
+
 // ===================================================================
 // parse_dep
 // ===================================================================

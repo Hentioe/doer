@@ -327,9 +327,22 @@ pub fn parse_opt(node: &KdlNode, task_name: &str) -> Result<Opt> {
     ensure_entries_count(node, 1, "opt").with_context(|| format!("task '{}'", task_name))?;
     let entry = node.first_entry().with_context(|| format!("task '{}': opt has no entry", task_name))?;
     let name = entry.key().with_context(|| format!("task '{}': opt has no key", task_name))?.to_string();
-    let value =
-        entry.string_value().with_context(|| format!("task '{}': opt value is not a string", task_name))?.to_string();
+    let value = entry_value_to_string(entry.value())
+        .with_context(|| format!("task '{}': opt value is not a string or number", task_name))?;
     Ok(Opt { name, value })
+}
+
+fn entry_value_to_string(val: &kdl::KdlValue) -> Option<String> {
+    if let Some(s) = val.as_string() {
+        return Some(s.to_string());
+    }
+    if let Some(i) = val.as_integer() {
+        return Some(i.to_string());
+    }
+    if let Some(f) = val.as_float() {
+        return Some(f.to_string());
+    }
+    None
 }
 
 // ---- deps ----
