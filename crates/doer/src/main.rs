@@ -3,13 +3,14 @@ use doer::cli::*;
 use doer::prelude::*;
 use doer_parser::Config;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::try_parse()?;
-    let config = Config::load_from_kdl_file(&cli.config)?;
+    let config = load_config(&cli.config)?;
 
     match cli.task {
         None => {
@@ -57,4 +58,12 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn load_config(path: &str) -> Result<Config> {
+    if !PathBuf::from(path).exists() {
+        bail!("no {PACKAGE_NAME}.kdl found");
+    }
+
+    Config::load_from_kdl_file(path)
 }
