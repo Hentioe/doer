@@ -47,6 +47,11 @@ async fn main() -> Result<()> {
             }
 
             let runnables = config.build_all(&task_name, &args, &opt_overrides)?;
+            let has_commands = runnables.iter().any(|r| !r.commands.is_empty());
+            if !has_commands {
+                eprintln!("task '{task_name}' has no command to run");
+                return Ok(());
+            }
             doer_runner::run_all(&runnables).await?;
         }
     }

@@ -122,6 +122,9 @@ pub async fn run_all(runnables: &[Runnable]) -> Result<()> {
     let mut children = Vec::new();
 
     for runnable in runnables {
+        if runnable.commands.is_empty() {
+            continue;
+        }
         if runnable.background {
             let child = run_background(runnable).await?;
             children.push(child);

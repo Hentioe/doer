@@ -1052,3 +1052,53 @@ fn build_all_propagates_background_flag() {
     assert!(!runnables[1].background);
     assert_eq!(runnables[1].name, "parent");
 }
+
+// ===================================================================
+// no-command tasks (grouping task)
+// ===================================================================
+
+fn no_command_task(name: &str, deps: Vec<Dep>) -> Task {
+    Task {
+        name: name.to_string(),
+        commands: vec![],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![],
+        deps,
+        user: None,
+    }
+}
+
+#[test]
+fn no_command_task_with_dep_builds_dep_only() {
+    let child = task("child", "echo hello", vec![], vec![]);
+    let parent = no_command_task("parent", vec![dep_with_args("child", vec![])]);
+    let cfg = config(vec![parent, child]);
+
+    let resolved = cfg.build_task_with_deps("parent", &[], &no_overrides()).unwrap();
+    assert_eq!(resolved.len(), 2);
+    assert_eq!(resolved[0].task.name, "child");
+    assert_eq!(resolved[1].task.name, "parent");
+
+    let runnables = cfg.build_all("parent", &[], &no_overrides()).unwrap();
+    assert_eq!(runnables.len(), 2);
+    assert!(!runnables[0].commands.is_empty());
+    assert_eq!(runnables[0].name, "child");
+    assert!(runnables[1].commands.is_empty());
+    assert_eq!(runnables[1].name, "parent");
+}
+
+#[test]
+fn no_command_task_inherits_dep_order() {
+    let d = task("d", "echo d", vec![], vec![]);
+    let c = task("c", "echo c", vec![], vec![]);
+    let b = simple_task_with_deps("b", vec![dep_with_args("c", vec![]), dep_with_args("d", vec![])]);
+    let a = simple_task_with_deps("a", vec![dep_with_args("b", vec![])]);
+    let group = no_command_task("group", vec![dep_with_args("a", vec![]), dep_with_args("b", vec![])]);
+    let cfg = config(vec![group, a, b, c, d]);
+
+    let resolved = cfg.build_task_with_deps("group", &[], &no_overrides()).unwrap();
+
+    assert_eq!(task_names(&resolved), vec!["c", "d", "b", "a", "group"]);
+}

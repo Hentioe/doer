@@ -26,8 +26,8 @@ tasks {
         - "cargo fmt --all -- --check"
         - "cargo clippy --all-targets -- -D warnings"
     }
-    // 应该允许无命令任务
-    /-prepush {
+    // 一个无命令任务的例子
+    prepush {
         dep precommit
         dep test
     }

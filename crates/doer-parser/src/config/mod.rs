@@ -228,6 +228,10 @@ impl Config {
 
     pub fn load_from_kdl_file(path: &str) -> Result<Self> {
         let content = std::fs::read_to_string(path).context("failed to read config file")?;
+        Self::from_kdl_str(&content)
+    }
+
+    pub fn from_kdl_str(content: &str) -> Result<Self> {
         let doc: KdlDocument = content.parse().context("failed to parse KDL config")?;
         let tasks_node = doc.get("tasks").context("missing 'tasks' node in config")?;
         let children = tasks_node.children().context("'tasks' node has no children block")?;
@@ -237,17 +241,22 @@ impl Config {
         for node in children.nodes() {
             let name = node.name().value().to_string();
 
-            let command = parse_commands(node, &name)?;
+            let commands = parse_commands(node, &name)?;
             let args = parse_args(node, &name)?;
             let opts = parse_opts(node, &name)?;
             let deps = parse_deps(node, &name)?;
+
+            if commands.is_empty() && deps.is_empty() {
+                bail!("task '{}' has no command and no dependencies", name);
+            }
+
             let user = parse_optional_string(node, &name, "user")?;
             let cwd = parse_optional_string(node, &name, "cwd")?;
             let env_vars = parse_env_vars(node, &name)?;
 
             tasks.push(Task {
                 name,
-                commands: command,
+                commands,
                 args,
                 cwd,
                 env_vars,
@@ -272,11 +281,9 @@ pub fn parse_commands(node: &KdlNode, task_name: &str) -> Result<Vec<String>> {
             .map(|s| vec![s.to_string()])
     } else if let Some(children) = node.children() {
         let dash_nodes = children.nodes_by_name("-");
-        ensure!(
-            !dash_nodes.is_empty(),
-            "task '{}': expected at least 1 '-' node, got 0",
-            task_name
-        );
+        if dash_nodes.is_empty() {
+            return Ok(Vec::new());
+        }
         dash_nodes
             .iter()
             .map(|dash| {
@@ -287,7 +294,7 @@ pub fn parse_commands(node: &KdlNode, task_name: &str) -> Result<Vec<String>> {
             })
             .collect()
     } else {
-        bail!("task '{}' has no command", task_name);
+        Ok(Vec::new())
     }
 }
 

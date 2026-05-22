@@ -59,8 +59,8 @@ mod command_complex {
     fn no_dash() {
         let doc = parse_doc("run { }");
         let node = first_node(&doc);
-        let err = parse_commands(&node, "test").unwrap_err();
-        assert!(format!("{:#}", err).contains("expected at least 1 '-' node, got 0"));
+        let result = parse_commands(&node, "test").unwrap();
+        assert!(result.is_empty());
     }
 
     #[test]
@@ -88,9 +88,8 @@ mod command_complex {
 fn command_no_entries_and_no_children() {
     let doc = parse_doc("empty");
     let node = first_node(&doc);
-    let err = parse_commands(&node, "test").unwrap_err();
-    println!("{:#}", err);
-    assert!(format!("{:#}", err).contains("has no command"));
+    let result = parse_commands(&node, "test").unwrap();
+    assert!(result.is_empty());
 }
 
 // ===================================================================
@@ -374,4 +373,51 @@ fn dep_background_false() {
     let node = first_node(&doc);
     let dep = parse_dep(node).unwrap();
     assert!(!dep.background);
+}
+
+// ===================================================================
+// from_kdl_str — no-command task validation
+// ===================================================================
+
+#[test]
+fn no_command_with_deps_is_valid() {
+    let cfg = Config::from_kdl_str(
+        r#"tasks {
+            prepush {
+                dep precommit
+                dep test
+            }
+            precommit { - "echo precommit" }
+            test { - "echo test" }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.tasks.len(), 3);
+    let prepush = &cfg.tasks[0];
+    assert!(prepush.commands.is_empty());
+    assert_eq!(prepush.deps.len(), 2);
+    assert_eq!(prepush.deps[0].name, "precommit");
+    assert_eq!(prepush.deps[1].name, "test");
+}
+
+#[test]
+fn no_command_no_deps_is_error() {
+    let err = Config::from_kdl_str(
+        r#"tasks {
+            empty { }
+        }"#,
+    )
+    .unwrap_err();
+    assert!(format!("{:#}", err).contains("has no command and no dependencies"));
+}
+
+#[test]
+fn no_command_single_entry_no_deps_is_error() {
+    let err = Config::from_kdl_str(
+        r#"tasks {
+            empty
+        }"#,
+    )
+    .unwrap_err();
+    assert!(format!("{:#}", err).contains("has no command and no dependencies"));
 }
