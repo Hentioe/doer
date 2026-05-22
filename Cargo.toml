@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "crates/doer-parser",
     "crates/doer",
+    "crates/doer-parser",
     "crates/doer-runner",
     "crates/doer-spec",
 ]
