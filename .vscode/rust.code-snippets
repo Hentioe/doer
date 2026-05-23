@@ -33,5 +33,16 @@
 			"**/src/**/*.rs"
 		],
 		"description": "Insert crate prelude"
-	}
+	},
+	"Comment Divider": {
+		"scope": "rust",
+		"prefix": "cd",
+		"body": [
+			"// ---- $1 ----"
+		],
+		"include": [
+			"*.rs"
+		],
+		"description": "Insert a comment divider"
+	},
 }
