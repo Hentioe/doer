@@ -1,5 +1,5 @@
 use doer_runner;
-use doer_spec::Runnable;
+use doer_spec::{Runnable, StdIo as SpecStdIo};
 use std::collections::HashSet;
 
 fn simple_runnable(name: &str, command: &str) -> Runnable {
@@ -10,6 +10,9 @@ fn simple_runnable(name: &str, command: &str) -> Runnable {
         env_vars: HashSet::new(),
         user: None,
         background: false,
+        stderr: SpecStdIo::Inherit,
+        stdout: SpecStdIo::Inherit,
+        stdin: SpecStdIo::Inherit,
     }
 }
 
@@ -21,6 +24,9 @@ fn bg_runnable(name: &str, command: &str) -> Runnable {
         env_vars: HashSet::new(),
         user: None,
         background: true,
+        stderr: SpecStdIo::Inherit,
+        stdout: SpecStdIo::Inherit,
+        stdin: SpecStdIo::Inherit,
     }
 }
 
@@ -116,6 +122,9 @@ async fn test_run_background_multi_command() {
         env_vars: HashSet::new(),
         user: None,
         background: true,
+        stderr: SpecStdIo::Inherit,
+        stdout: SpecStdIo::Inherit,
+        stdin: SpecStdIo::Inherit,
     };
     let mut child = doer_runner::run_background(&r).await.unwrap();
     let status = child.wait().await.unwrap();
@@ -142,6 +151,9 @@ async fn test_run_all_fg_multi_command_stops_on_failure() {
         env_vars: HashSet::new(),
         user: None,
         background: false,
+        stderr: SpecStdIo::Inherit,
+        stdout: SpecStdIo::Inherit,
+        stdin: SpecStdIo::Inherit,
     };
     let result = doer_runner::run_foreground(&r).await;
     assert!(result.is_err());

@@ -6,7 +6,7 @@ mod template;
 mod helper;
 
 use crate::prelude::*;
-use doer_spec::{EnvVar, Runnable};
+use doer_spec::{EnvVar, Runnable, StdIo as SpecStdIo};
 use helper::*;
 use kdl::{KdlDocument, KdlNode};
 use kdl_ext::*;
@@ -28,6 +28,9 @@ pub struct Task {
     pub opts: Vec<Opt>,
     pub deps: Vec<Dep>,
     pub user: Option<String>,
+    pub stdin: Option<SpecStdIo>,
+    pub stderr: Option<SpecStdIo>,
+    pub stdout: Option<SpecStdIo>,
 }
 
 #[derive(Debug)]
@@ -157,6 +160,7 @@ impl Config {
         Ok(resolved)
     }
 
+    // todo: 移除这个 allow
     #[allow(clippy::too_many_arguments)]
     fn build_task_with_deps_inner<'a>(
         &'a self,
@@ -220,6 +224,9 @@ impl Config {
                     cwd: call.task.build_cwd(&call.args, &call.opt_overrides)?,
                     env_vars: call.task.build_env_vars(&call.args, &call.opt_overrides)?,
                     user: call.task.user.clone(),
+                    stdin: call.task.stdin.unwrap_or_default(),
+                    stdout: call.task.stdout.unwrap_or_default(),
+                    stderr: call.task.stderr.unwrap_or_default(),
                     background: call.background,
                 })
             })
@@ -253,6 +260,7 @@ impl Config {
             let user = parse_optional_string(node, &name, "user")?;
             let cwd = parse_optional_string(node, &name, "cwd")?;
             let env_vars = parse_env_vars(node, &name)?;
+            let (stdin, stdout, stderr) = parse_stdio(node, &name)?;
 
             tasks.push(Task {
                 name,
@@ -263,6 +271,9 @@ impl Config {
                 opts,
                 deps,
                 user,
+                stdin,
+                stdout,
+                stderr,
             });
         }
 
@@ -464,4 +475,46 @@ pub fn parse_env_var(node: &KdlNode, task_name: &str) -> Result<EnvVar> {
     let value = entry_value_to_string(entry.value())
         .with_context(|| format!("task '{}': env var value is not a string or number", task_name))?;
     Ok(EnvVar { name, value })
+}
+
+// ---- stdio ----
+// todo: 为 parse_stdio 添加测试
+
+pub fn parse_stdio(
+    node: &KdlNode,
+    task_name: &str,
+) -> Result<(Option<SpecStdIo>, Option<SpecStdIo>, Option<SpecStdIo>)> {
+    let stdin = parse_optional_stdio(node, task_name, "stdin")?;
+    let stdout = parse_optional_stdio(node, task_name, "stdout")?;
+    let stderr = parse_optional_stdio(node, task_name, "stderr")?;
+    Ok((stdin, stdout, stderr))
+}
+
+fn parse_optional_stdio(node: &KdlNode, task_name: &str, field: &str) -> Result<Option<SpecStdIo>> {
+    let Some(children) = node.children() else {
+        return Ok(None);
+    };
+    let nodes = children.nodes_by_name(field);
+    ensure!(
+        nodes.len() <= 1,
+        "task '{task_name}': expected at most 1 {field} node, got {}",
+        nodes.len()
+    );
+    match nodes.first() {
+        Some(n) => {
+            ensure_entries_count(n, 1, field).with_context(|| format!("task '{}'", task_name))?;
+            let val =
+                n.first_string().with_context(|| format!("task '{}': {} value is not a string", task_name, field))?;
+            SpecStdIo::try_from(val)
+                .ok()
+                .with_context(|| {
+                    format!(
+                        "task '{task_name}': invalid {field} value: {val}, possible values: [{}]",
+                        SpecStdIo::default().valid_string_values().join(", ")
+                    )
+                })
+                .map(Some)
+        }
+        None => Ok(None),
+    }
 }

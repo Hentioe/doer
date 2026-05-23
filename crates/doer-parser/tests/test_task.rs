@@ -22,6 +22,9 @@ fn task_with_cwd(name: &str, command: &str, cwd: Option<&str>, args: Vec<&str>, 
             .collect(),
         deps: vec![],
         user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
     }
 }
 
@@ -53,6 +56,9 @@ fn task_with_env(
             .collect(),
         deps: vec![],
         user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
     }
 }
 
@@ -72,6 +78,9 @@ fn task_with_deps(name: &str, command: &str, args: Vec<&str>, opts: Vec<(&str, &
             .collect(),
         deps,
         user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
     }
 }
 
@@ -812,6 +821,9 @@ fn dep_opt_overrides_are_independent() {
         }],
         deps: vec![],
         user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
     };
     let cfg = config(vec![parent_task, child_task]);
 
@@ -1067,6 +1079,9 @@ fn no_command_task(name: &str, deps: Vec<Dep>) -> Task {
         opts: vec![],
         deps,
         user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
     }
 }
 

@@ -12,9 +12,9 @@ pub async fn run_foreground(runnable: &Runnable) -> Result<()> {
         let mut cmd = build_command(runnable, command)?;
         print_running(runnable, command, false);
         let status = cmd
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
+            .stdin(runnable.stdin)
+            .stdout(runnable.stdout)
+            .stderr(runnable.stderr)
             .status()
             .await
             .context(format!("failed to execute task '{}'", runnable.name))?;
@@ -142,7 +142,7 @@ pub async fn run_all(runnables: &[Runnable]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use doer_spec::{EnvVar, Runnable};
+    use doer_spec::{EnvVar, Runnable, StdIo as SpecStdIo};
     use std::collections::HashSet;
 
     fn make_runnable(
@@ -159,6 +159,9 @@ mod tests {
             env_vars,
             user: user.map(|s| s.to_string()),
             background: false,
+            stderr: SpecStdIo::Inherit,
+            stdout: SpecStdIo::Inherit,
+            stdin: SpecStdIo::Inherit,
         }
     }
 
