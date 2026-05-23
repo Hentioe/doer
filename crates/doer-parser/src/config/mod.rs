@@ -45,6 +45,9 @@ pub struct Dep {
     pub args: Vec<String>,
     pub opts: Vec<Opt>,
     pub background: bool,
+    pub stdin: Option<String>,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
 }
 
 impl Task {
@@ -143,11 +146,17 @@ impl Task {
                 Ok((opt.name.clone(), resolved_value))
             })
             .collect::<Result<HashMap<_, _>>>()?;
+        let resolve_stdio = |v: &Option<String>| -> Result<Option<String>> {
+            v.as_ref().map(|s| s.resolve_both(&ctx, args)).transpose()
+        };
         Ok(DepResolution {
             name: dep.name.clone(),
             args: resolved_args,
             opt_overrides: resolved_opts,
             background: dep.background,
+            stdin: resolve_stdio(&dep.stdin)?,
+            stdout: resolve_stdio(&dep.stdout)?,
+            stderr: resolve_stdio(&dep.stderr)?,
         })
     }
 }
@@ -158,6 +167,9 @@ pub struct TaskCall<'a> {
     pub args: Vec<String>,
     pub opt_overrides: HashMap<String, String>,
     pub background: bool,
+    pub stdin: Option<String>,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
 }
 
 pub struct DepResolution {
@@ -165,6 +177,9 @@ pub struct DepResolution {
     pub args: Vec<String>,
     pub opt_overrides: HashMap<String, String>,
     pub background: bool,
+    pub stdin: Option<String>,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
 }
 
 impl Config {
@@ -186,6 +201,9 @@ impl Config {
             args.to_vec(),
             opt_overrides.clone(),
             false,
+            None,
+            None,
+            None,
             &mut resolved,
             &mut resolved_set,
             &mut resolving,
@@ -201,6 +219,9 @@ impl Config {
         args: Vec<String>,
         opt_overrides: HashMap<String, String>,
         background: bool,
+        stdin: Option<String>,
+        stdout: Option<String>,
+        stderr: Option<String>,
         resolved: &mut Vec<TaskCall<'a>>,
         resolved_set: &mut HashSet<String>,
         resolving: &mut HashSet<String>,
@@ -224,6 +245,9 @@ impl Config {
                 r.args,
                 r.opt_overrides,
                 r.background,
+                r.stdin,
+                r.stdout,
+                r.stderr,
                 resolved,
                 resolved_set,
                 resolving,
@@ -235,6 +259,9 @@ impl Config {
             args,
             opt_overrides,
             background,
+            stdin,
+            stdout,
+            stderr,
         });
         resolving.remove(task_name);
         resolved_set.insert(task_name.to_string());
@@ -251,15 +278,27 @@ impl Config {
         self.build_task_with_deps(task_name, args, opt_overrides)?
             .iter()
             .map(|call| {
+                let stdin = match &call.stdin {
+                    Some(val) => parse_spec_stdio(val, "stdin", &call.task.name)?,
+                    None => call.task.build_stdin(&call.args, &call.opt_overrides)?,
+                };
+                let stdout = match &call.stdout {
+                    Some(val) => parse_spec_stdio(val, "stdout", &call.task.name)?,
+                    None => call.task.build_stdout(&call.args, &call.opt_overrides)?,
+                };
+                let stderr = match &call.stderr {
+                    Some(val) => parse_spec_stdio(val, "stderr", &call.task.name)?,
+                    None => call.task.build_stderr(&call.args, &call.opt_overrides)?,
+                };
                 Ok(Runnable {
                     name: call.task.name.clone(),
                     commands: call.task.build_commands(&call.args, &call.opt_overrides)?,
                     cwd: call.task.build_cwd(&call.args, &call.opt_overrides)?,
                     env_vars: call.task.build_env_vars(&call.args, &call.opt_overrides)?,
                     user: call.task.user.clone(),
-                    stdin: call.task.build_stdin(&call.args, &call.opt_overrides)?,
-                    stdout: call.task.build_stdout(&call.args, &call.opt_overrides)?,
-                    stderr: call.task.build_stderr(&call.args, &call.opt_overrides)?,
+                    stdin,
+                    stdout,
+                    stderr,
                     background: call.background,
                 })
             })
@@ -416,13 +455,45 @@ pub fn parse_dep(node: &KdlNode) -> Result<Dep> {
         None => Ok(Vec::new()),
     }?;
     let background = parse_dep_background(node)?;
+    let (stdin, stdout, stderr) = parse_dep_stdio(node, &name)?;
 
     Ok(Dep {
         name,
         args,
         opts,
         background,
+        stdin,
+        stdout,
+        stderr,
     })
+}
+
+fn parse_dep_stdio(node: &KdlNode, dep_name: &str) -> Result<(Option<String>, Option<String>, Option<String>)> {
+    let Some(children) = node.children() else {
+        return Ok((None, None, None));
+    };
+    let stdin = parse_dep_optional_stdio(children, dep_name, "stdin")?;
+    let stdout = parse_dep_optional_stdio(children, dep_name, "stdout")?;
+    let stderr = parse_dep_optional_stdio(children, dep_name, "stderr")?;
+    Ok((stdin, stdout, stderr))
+}
+
+fn parse_dep_optional_stdio(children: &KdlDocument, dep_name: &str, field: &str) -> Result<Option<String>> {
+    let nodes = children.nodes_by_name(field);
+    ensure!(
+        nodes.len() <= 1,
+        "dep '{dep_name}': expected at most 1 {field} node, got {}",
+        nodes.len()
+    );
+    match nodes.first() {
+        Some(n) => {
+            ensure_entries_count(n, 1, field).with_context(|| format!("dep '{}'", dep_name))?;
+            n.first_string()
+                .with_context(|| format!("dep '{}': {} value is not a string", dep_name, field))
+                .map(|s| Some(s.to_string()))
+        }
+        None => Ok(None),
+    }
 }
 
 fn parse_dep_background(node: &KdlNode) -> Result<bool> {
@@ -511,6 +582,15 @@ pub fn parse_env_var(node: &KdlNode, task_name: &str) -> Result<EnvVar> {
 }
 
 // ---- stdio ----
+
+pub fn parse_spec_stdio(raw: &str, label: &str, task_name: &str) -> Result<SpecStdIo> {
+    SpecStdIo::try_from(raw).map_err(|e| anyhow::anyhow!("{}", e)).with_context(|| {
+        format!(
+            "task '{task_name}': invalid {label} value: '{raw}', possible values: [{}]",
+            SpecStdIo::valid_string_values().join(", ")
+        )
+    })
+}
 
 pub fn parse_stdio(node: &KdlNode, task_name: &str) -> Result<(Option<String>, Option<String>, Option<String>)> {
     let stdin = parse_optional_stdio(node, task_name, "stdin")?;

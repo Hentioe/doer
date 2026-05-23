@@ -686,6 +686,9 @@ fn dep_with_args(name: &str, args: Vec<&str>) -> Dep {
         args: args.iter().map(|s| s.to_string()).collect(),
         opts: vec![],
         background: false,
+        stdin: None,
+        stdout: None,
+        stderr: None,
     }
 }
 
@@ -701,6 +704,9 @@ fn dep_with_opts(name: &str, opts: Vec<(&str, &str)>) -> Dep {
             })
             .collect(),
         background: false,
+        stdin: None,
+        stdout: None,
+        stderr: None,
     }
 }
 
@@ -770,6 +776,9 @@ fn build_dep_literal_and_ref_mixed() {
             args: vec!["literal".into(), "{x}".into(), "{y}".into()],
             opts: vec![],
             background: false,
+            stdin: None,
+            stdout: None,
+            stderr: None,
         }],
     );
 
@@ -1148,6 +1157,9 @@ fn build_all_propagates_background_flag() {
         args: vec![],
         opts: vec![],
         background: true,
+        stdin: None,
+        stdout: None,
+        stderr: None,
     };
     let parent_task = task_with_deps("parent", "echo parent", vec![], vec![], vec![dep]);
     let child_task = task("child", "echo child", vec![], vec![]);
@@ -1160,6 +1172,107 @@ fn build_all_propagates_background_flag() {
     assert_eq!(runnables[0].name, "child");
     assert!(!runnables[1].background);
     assert_eq!(runnables[1].name, "parent");
+}
+
+// ===================================================================
+// dep stdio override
+// ===================================================================
+
+#[test]
+fn dep_stdio_literal_override() {
+    let child = Task {
+        name: "child".into(),
+        commands: vec!["echo child".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![],
+        deps: vec![],
+        user: None,
+        stdin: Some("inherit".into()),
+        stdout: Some("inherit".into()),
+        stderr: Some("inherit".into()),
+    };
+    let parent = Task {
+        name: "parent".into(),
+        commands: vec!["echo parent".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![],
+        deps: vec![Dep {
+            name: "child".into(),
+            args: vec![],
+            opts: vec![],
+            background: false,
+            stdin: Some("void".into()),
+            stdout: Some("null".into()),
+            stderr: None,
+        }],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    let cfg = config(vec![parent, child]);
+    let runnables = cfg.build_all("parent", &[], &no_overrides()).unwrap();
+
+    assert_eq!(runnables.len(), 2);
+
+    // dep overrides child's stdin and stdout
+    assert_eq!(runnables[0].stdin, doer_spec::StdIo::Null); // "void" -> Null
+    assert_eq!(runnables[0].stdout, doer_spec::StdIo::Null); // "null" -> Null
+    assert_eq!(runnables[0].stderr, doer_spec::StdIo::Inherit); // not overridden, uses child's own
+
+    // parent unaffected
+    assert_eq!(runnables[1].stdin, doer_spec::StdIo::Inherit);
+    assert_eq!(runnables[1].stdout, doer_spec::StdIo::Inherit);
+    assert_eq!(runnables[1].stderr, doer_spec::StdIo::Inherit);
+}
+
+#[test]
+fn dep_stdio_override_resolves_parent_variable() {
+    let child = Task {
+        name: "child".into(),
+        commands: vec!["echo child".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    let parent = Task {
+        name: "parent".into(),
+        commands: vec!["echo parent".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![Opt {
+            name: "mode".into(),
+            value: "null".into(),
+        }],
+        deps: vec![Dep {
+            name: "child".into(),
+            args: vec![],
+            opts: vec![],
+            background: false,
+            stdin: None,
+            stdout: Some("{mode}".into()),
+            stderr: None,
+        }],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    let cfg = config(vec![parent, child]);
+    let runnables = cfg.build_all("parent", &[], &no_overrides()).unwrap();
+
+    assert_eq!(runnables[0].stdout, doer_spec::StdIo::Null);
 }
 
 // ===================================================================

@@ -28,17 +28,20 @@ tasks {
     }
     // 一个无命令任务的例子
     prepush {
-        dep precommit
+        opt stdio=default
+        dep precommit {
+            stdout "{stdio}"
+            stderr "{stdio}"
+        }
         dep test {
-            stdout void // <- todo: 支持管理依赖任务的 stdio
+            stdout "{stdio}"
+            stderr "{stdio}"
         }
     }
     format "cargo fmt"
     build "cargo build"
     test {
         - "cargo test --all"
-        opt stdout=default
-        stdout "{stdout}"
         dep format
     }
     cleanup "cargo clean"

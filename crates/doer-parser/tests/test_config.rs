@@ -563,3 +563,56 @@ mod stdio_parsing {
         assert_eq!(stdout.unwrap(), "{mode}");
     }
 }
+
+// ===================================================================
+// parse_dep — stdio fields
+// ===================================================================
+mod dep_stdio_parsing {
+    use super::*;
+
+    fn parse_single_dep(kdl: &str) -> Dep {
+        let doc = parse_doc(&format!(r#"task "cmd" {{ dep {} }}"#, kdl));
+        let node = first_node(&doc);
+        parse_deps(&node, "test").unwrap().into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn no_stdio_by_default() {
+        let dep = parse_single_dep(r#""child""#);
+        assert!(dep.stdin.is_none());
+        assert!(dep.stdout.is_none());
+        assert!(dep.stderr.is_none());
+    }
+
+    #[test]
+    fn with_stdout_literal() {
+        let dep = parse_single_dep(
+            r#""child" {
+                stdout "null"
+            }"#,
+        );
+        assert_eq!(dep.stdout.unwrap(), "null");
+    }
+
+    #[test]
+    fn with_stdin_and_stderr() {
+        let dep = parse_single_dep(
+            r#""child" {
+                stdin "inherit"
+                stderr "void"
+            }"#,
+        );
+        assert_eq!(dep.stdin.unwrap(), "inherit");
+        assert_eq!(dep.stderr.unwrap(), "void");
+    }
+
+    #[test]
+    fn with_stdin_template() {
+        let dep = parse_single_dep(
+            r#""child" {
+                stdin "{mode}"
+            }"#,
+        );
+        assert_eq!(dep.stdin.unwrap(), "{mode}");
+    }
+}
