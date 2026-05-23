@@ -28,9 +28,9 @@ pub struct Task {
     pub opts: Vec<Opt>,
     pub deps: Vec<Dep>,
     pub user: Option<String>,
-    pub stdin: Option<SpecStdIo>,
-    pub stderr: Option<SpecStdIo>,
-    pub stdout: Option<SpecStdIo>,
+    pub stdin: Option<String>,
+    pub stderr: Option<String>,
+    pub stdout: Option<String>,
 }
 
 #[derive(Debug)]
@@ -91,6 +91,39 @@ impl Task {
                 ev.resolve_template(&ctx)?.resolve_args(args, &label)
             })
             .collect()
+    }
+
+    pub fn build_stdin(&self, args: &[String], opt_overrides: &HashMap<String, String>) -> Result<SpecStdIo> {
+        self.build_stdio_field(&self.stdin, args, opt_overrides, "stdin")
+    }
+
+    pub fn build_stdout(&self, args: &[String], opt_overrides: &HashMap<String, String>) -> Result<SpecStdIo> {
+        self.build_stdio_field(&self.stdout, args, opt_overrides, "stdout")
+    }
+
+    pub fn build_stderr(&self, args: &[String], opt_overrides: &HashMap<String, String>) -> Result<SpecStdIo> {
+        self.build_stdio_field(&self.stderr, args, opt_overrides, "stderr")
+    }
+
+    fn build_stdio_field(
+        &self,
+        field: &Option<String>,
+        args: &[String],
+        opt_overrides: &HashMap<String, String>,
+        label: &str,
+    ) -> Result<SpecStdIo> {
+        let Some(raw) = field else {
+            return Ok(SpecStdIo::default());
+        };
+        let ctx = self.substitution_context(opt_overrides);
+        let resolved = raw.resolve_template(&ctx)?.resolve_args(args, &format!("{label} template"))?;
+        SpecStdIo::try_from(resolved.as_str()).map_err(|e| anyhow::anyhow!("{}", e)).with_context(|| {
+            format!(
+                "task '{}': invalid {label} value after resolution: '{resolved}', possible values: [{}]",
+                self.name,
+                SpecStdIo::valid_string_values().join(", ")
+            )
+        })
     }
 
     pub fn build_dep(
@@ -224,9 +257,9 @@ impl Config {
                     cwd: call.task.build_cwd(&call.args, &call.opt_overrides)?,
                     env_vars: call.task.build_env_vars(&call.args, &call.opt_overrides)?,
                     user: call.task.user.clone(),
-                    stdin: call.task.stdin.unwrap_or_default(),
-                    stdout: call.task.stdout.unwrap_or_default(),
-                    stderr: call.task.stderr.unwrap_or_default(),
+                    stdin: call.task.build_stdin(&call.args, &call.opt_overrides)?,
+                    stdout: call.task.build_stdout(&call.args, &call.opt_overrides)?,
+                    stderr: call.task.build_stderr(&call.args, &call.opt_overrides)?,
                     background: call.background,
                 })
             })
@@ -478,19 +511,15 @@ pub fn parse_env_var(node: &KdlNode, task_name: &str) -> Result<EnvVar> {
 }
 
 // ---- stdio ----
-// todo: 为 parse_stdio 添加测试
 
-pub fn parse_stdio(
-    node: &KdlNode,
-    task_name: &str,
-) -> Result<(Option<SpecStdIo>, Option<SpecStdIo>, Option<SpecStdIo>)> {
+pub fn parse_stdio(node: &KdlNode, task_name: &str) -> Result<(Option<String>, Option<String>, Option<String>)> {
     let stdin = parse_optional_stdio(node, task_name, "stdin")?;
     let stdout = parse_optional_stdio(node, task_name, "stdout")?;
     let stderr = parse_optional_stdio(node, task_name, "stderr")?;
     Ok((stdin, stdout, stderr))
 }
 
-fn parse_optional_stdio(node: &KdlNode, task_name: &str, field: &str) -> Result<Option<SpecStdIo>> {
+fn parse_optional_stdio(node: &KdlNode, task_name: &str, field: &str) -> Result<Option<String>> {
     let Some(children) = node.children() else {
         return Ok(None);
     };
@@ -503,17 +532,9 @@ fn parse_optional_stdio(node: &KdlNode, task_name: &str, field: &str) -> Result<
     match nodes.first() {
         Some(n) => {
             ensure_entries_count(n, 1, field).with_context(|| format!("task '{}'", task_name))?;
-            let val =
-                n.first_string().with_context(|| format!("task '{}': {} value is not a string", task_name, field))?;
-            SpecStdIo::try_from(val)
-                .ok()
-                .with_context(|| {
-                    format!(
-                        "task '{task_name}': invalid {field} value: {val}, possible values: [{}]",
-                        SpecStdIo::default().valid_string_values().join(", ")
-                    )
-                })
-                .map(Some)
+            n.first_string()
+                .with_context(|| format!("task '{}': {} value is not a string", task_name, field))
+                .map(|s| Some(s.to_string()))
         }
         None => Ok(None),
     }

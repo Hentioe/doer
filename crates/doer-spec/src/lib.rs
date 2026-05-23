@@ -24,7 +24,7 @@ pub struct EnvVar {
     pub value: String,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum StdIo {
     #[default]
     Inherit,
@@ -32,7 +32,7 @@ pub enum StdIo {
 }
 
 impl StdIo {
-    pub fn valid_string_values(&self) -> &'static [&'static str] {
+    pub fn valid_string_values() -> &'static [&'static str] {
         VALID_STDIO_VALUES
     }
 }

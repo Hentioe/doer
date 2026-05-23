@@ -580,8 +580,105 @@ fn build_env_vars_missing_arg() {
 }
 
 // ===================================================================
+// build_stdin / build_stdout / build_stderr
+// ===================================================================
+
+#[test]
+fn stdio_default_when_not_configured() {
+    let t = task("run", "cmd", vec![], vec![]);
+    assert_eq!(t.build_stdin(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Inherit);
+    assert_eq!(t.build_stdout(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Inherit);
+    assert_eq!(t.build_stderr(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Inherit);
+}
+
+#[test]
+fn stdio_literal_values() {
+    let t = task_with_stdio(
+        "run",
+        "cmd",
+        Some("null"),
+        Some("inherit"),
+        Some("void"),
+        vec![],
+        vec![],
+    );
+    assert_eq!(t.build_stdin(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Null);
+    assert_eq!(t.build_stdout(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Inherit);
+    assert_eq!(t.build_stderr(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Null);
+}
+
+#[test]
+fn stdio_with_opt_variable() {
+    let t = task_with_stdio("run", "cmd", Some("{mode}"), None, None, vec![], vec![("mode", "null")]);
+    assert_eq!(t.build_stdin(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Null);
+}
+
+#[test]
+fn stdio_with_opt_override() {
+    let t = task_with_stdio(
+        "run",
+        "cmd",
+        Some("{mode}"),
+        None,
+        None,
+        vec![],
+        vec![("mode", "inherit")],
+    );
+    assert_eq!(
+        t.build_stdin(&[], &overrides(&[("mode", "null")])).unwrap(),
+        doer_spec::StdIo::Null
+    );
+}
+
+#[test]
+fn stdio_with_arg_variable() {
+    let t = task_with_stdio("run", "cmd", Some("{mode}"), None, None, vec!["mode"], vec![]);
+    assert_eq!(
+        t.build_stdin(&[s("void")], &no_overrides()).unwrap(),
+        doer_spec::StdIo::Null
+    );
+}
+
+#[test]
+fn stdio_invalid_value_after_resolution() {
+    let t = task_with_stdio("run", "cmd", Some("invalid"), None, None, vec![], vec![]);
+    let err = t.build_stdin(&[], &no_overrides()).unwrap_err();
+    assert!(format!("{:#}", err).contains("invalid stdin value after resolution"));
+}
+
+// ===================================================================
 // build_dep — dep args/opts are independent of parent
 // ===================================================================
+
+fn task_with_stdio(
+    name: &str,
+    command: &str,
+    stdin: Option<&str>,
+    stdout: Option<&str>,
+    stderr: Option<&str>,
+    args: Vec<&str>,
+    opts: Vec<(&str, &str)>,
+) -> Task {
+    Task {
+        name: name.to_string(),
+        commands: vec![command.to_string()],
+        args: args.iter().map(|s| s.to_string()).collect(),
+        cwd: None,
+        env_vars: vec![],
+        opts: opts
+            .iter()
+            .map(|(k, v)| Opt {
+                name: k.to_string(),
+                value: v.to_string(),
+            })
+            .collect(),
+        deps: vec![],
+        user: None,
+        stdin: stdin.map(|s| s.to_string()),
+        stdout: stdout.map(|s| s.to_string()),
+        stderr: stderr.map(|s| s.to_string()),
+    }
+}
 
 fn dep_with_args(name: &str, args: Vec<&str>) -> Dep {
     Dep {

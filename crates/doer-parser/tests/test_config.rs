@@ -491,3 +491,75 @@ fn no_command_single_entry_no_deps_is_error() {
     .unwrap_err();
     assert!(format!("{:#}", err).contains("has no command and no dependencies"));
 }
+
+// ===================================================================
+// parse_stdio
+// ===================================================================
+mod stdio_parsing {
+    use super::*;
+
+    #[test]
+    fn all_default_when_omitted() {
+        let doc = parse_doc(r#"build "cmd""#);
+        let node = first_node(&doc);
+        let (stdin, stdout, stderr) = parse_stdio(&node, "test").unwrap();
+        assert!(stdin.is_none());
+        assert!(stdout.is_none());
+        assert!(stderr.is_none());
+    }
+
+    #[test]
+    fn all_three_values() {
+        let doc = parse_doc(
+            r#"build "cmd" {
+                stdin "null"
+                stdout "inherit"
+                stderr "void"
+            }"#,
+        );
+        let node = first_node(&doc);
+        let (stdin, stdout, stderr) = parse_stdio(&node, "test").unwrap();
+        assert_eq!(stdin.unwrap(), "null");
+        assert_eq!(stdout.unwrap(), "inherit");
+        assert_eq!(stderr.unwrap(), "void");
+    }
+
+    #[test]
+    fn partial_values() {
+        let doc = parse_doc(
+            r#"build "cmd" {
+                stdout "default"
+            }"#,
+        );
+        let node = first_node(&doc);
+        let (stdin, stdout, stderr) = parse_stdio(&node, "test").unwrap();
+        assert!(stdin.is_none());
+        assert_eq!(stdout.unwrap(), "default");
+        assert!(stderr.is_none());
+    }
+
+    #[test]
+    fn duplicate_is_error() {
+        let doc = parse_doc(
+            r#"build "cmd" {
+                stdout "inherit"
+                stdout "null"
+            }"#,
+        );
+        let node = first_node(&doc);
+        let err = parse_stdio(&node, "test").unwrap_err();
+        assert!(format!("{:#}", err).contains("expected at most 1"));
+    }
+
+    #[test]
+    fn stores_raw_template() {
+        let doc = parse_doc(
+            r#"build "cmd" {
+                stdout "{mode}"
+            }"#,
+        );
+        let node = first_node(&doc);
+        let (_stdin, stdout, _stderr) = parse_stdio(&node, "test").unwrap();
+        assert_eq!(stdout.unwrap(), "{mode}");
+    }
+}

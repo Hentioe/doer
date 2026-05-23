@@ -29,12 +29,16 @@ tasks {
     // 一个无命令任务的例子
     prepush {
         dep precommit
-        dep test
+        dep test {
+            stdout void // <- todo: 支持管理依赖任务的 stdio
+        }
     }
     format "cargo fmt"
     build "cargo build"
     test {
         - "cargo test --all"
+        opt stdout=default
+        stdout "{stdout}"
         dep format
     }
     cleanup "cargo clean"
@@ -43,7 +47,7 @@ tasks {
         arg path
         opt bin=doer
         dep test
-        dep add-cap {
+        dep setcap {
             arg "{bin}"
             opt mode=release
         }
@@ -52,7 +56,7 @@ tasks {
         - "cargo run --bin {bin}"
         arg bin
         dep build
-        dep add-cap {
+        dep setcap {
             arg "{bin}"
         }
     }
@@ -60,7 +64,7 @@ tasks {
         - "cargo build --bin {bin} --release"
         arg bin
         dep test
-        dep add-cap {
+        dep setcap {
             arg "{bin}"
             opt mode=release
         }
@@ -68,7 +72,7 @@ tasks {
             RUST_BACKTRACE full
         }
     }
-    add-cap {
+    setcap {
         - "setcap 'cap_sys_nice=+ep' {bin}"
         cwd "target/{mode}"
         arg bin
