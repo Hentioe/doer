@@ -9,7 +9,7 @@ const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::try_parse()?;
+    let cli = Cli::parse();
     let config = load_config(&cli.config)?;
 
     match cli.task {
