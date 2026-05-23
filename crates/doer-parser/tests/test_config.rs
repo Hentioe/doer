@@ -308,6 +308,41 @@ fn env_var_too_many_entries() {
     assert!(format!("{:#}", err).contains("expected 1 entries, got 2"));
 }
 
+#[test]
+fn env_var_integer_value() {
+    let doc = parse_doc("PORT 8080");
+    let node = first_node(&doc);
+    let var = parse_env_var(node, "test").unwrap();
+    assert_eq!(var.name, "PORT");
+    assert_eq!(var.value, "8080");
+}
+
+#[test]
+fn env_var_float_value() {
+    let doc = parse_doc("RATIO 3.14");
+    let node = first_node(&doc);
+    let var = parse_env_var(node, "test").unwrap();
+    assert_eq!(var.name, "RATIO");
+    assert_eq!(var.value, "3.14");
+}
+
+#[test]
+fn env_var_negative_integer_value() {
+    let doc = parse_doc("OFFSET -1");
+    let node = first_node(&doc);
+    let var = parse_env_var(node, "test").unwrap();
+    assert_eq!(var.name, "OFFSET");
+    assert_eq!(var.value, "-1");
+}
+
+#[test]
+fn env_var_bool_value_is_rejected() {
+    let doc = parse_doc("FLAG #true");
+    let node = first_node(&doc);
+    let err = parse_env_var(node, "test").unwrap_err();
+    assert!(format!("{:#}", err).contains("not a string or number"));
+}
+
 // ===================================================================
 // parse_env_vars (container)
 // ===================================================================

@@ -460,9 +460,8 @@ pub fn parse_env_vars(node: &KdlNode, task_name: &str) -> Result<Vec<EnvVar>> {
 pub fn parse_env_var(node: &KdlNode, task_name: &str) -> Result<EnvVar> {
     ensure_entries_count(node, 1, "env var").with_context(|| format!("task '{}'", task_name))?;
     let name = node.name().value().to_string();
-    let value = node
-        .first_string()
-        .with_context(|| format!("task '{}': env var value is not a string", task_name))?
-        .to_string();
+    let entry = node.first_entry().with_context(|| format!("task '{}': env var has no entry", task_name))?;
+    let value = entry_value_to_string(entry.value())
+        .with_context(|| format!("task '{}': env var value is not a string or number", task_name))?;
     Ok(EnvVar { name, value })
 }
