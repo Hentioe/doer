@@ -1,25 +1,37 @@
 pub mod print;
 
 #[doc(hidden)]
-pub use colored;
+pub use colored; // 供 print 模块的宏使用
 
 use std::{
     collections::HashSet,
     hash::{Hash, Hasher},
 };
+use typed_builder::TypedBuilder;
 
 const VALID_STDIO_VALUES: &[&str] = &["default", "inherit", "null", "void"];
 
-#[derive(Debug)]
+#[derive(Debug, TypedBuilder)]
 pub struct Runnable {
+    // 任务名，必要参数
     pub name: String,
+    // 命令列表，必要参数
     pub commands: Vec<String>,
+    #[builder(default)]
     pub cwd: Option<String>,
+    #[builder(default)]
     pub env_vars: HashSet<EnvVar>,
+    #[builder(default)]
     pub user: Option<String>,
+    #[builder(default = StdIo::Inherit)]
     pub stdin: StdIo,
+    #[builder(default = StdIo::Inherit)]
     pub stdout: StdIo,
+    #[builder(default = StdIo::Inherit)]
     pub stderr: StdIo,
+    // #[builder(default, setter(strip_option))]
+    // pub nice: Option<i8>,
+    #[builder(default = false)]
     pub background: bool,
 }
 

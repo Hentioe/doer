@@ -142,7 +142,7 @@ pub async fn run_all(runnables: &[Runnable]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use doer_spec::{EnvVar, Runnable, StdIo as SpecStdIo};
+    use doer_spec::{EnvVar, Runnable};
     use std::collections::HashSet;
 
     fn make_runnable(
@@ -152,17 +152,14 @@ mod tests {
         env_vars: HashSet<EnvVar>,
         user: Option<&str>,
     ) -> Runnable {
-        Runnable {
-            name: name.to_string(),
-            commands: vec![command.to_string()],
-            cwd: cwd.map(|s| s.to_string()),
-            env_vars,
-            user: user.map(|s| s.to_string()),
-            background: false,
-            stderr: SpecStdIo::Inherit,
-            stdout: SpecStdIo::Inherit,
-            stdin: SpecStdIo::Inherit,
-        }
+        Runnable::builder()
+            .name(name.to_string())
+            .commands(vec![command.to_string()])
+            .cwd(cwd.map(|s| s.to_string()))
+            .env_vars(env_vars)
+            .user(user.map(|s| s.to_string()))
+            .background(false)
+            .build()
     }
 
     fn args_list(runnable: &Runnable) -> (String, Vec<String>) {

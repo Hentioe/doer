@@ -5,3 +5,4 @@ version.workspace = true
 
 [dependencies]
 colored.workspace = true
+typed-builder.workspace = true

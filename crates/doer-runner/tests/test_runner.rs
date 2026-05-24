@@ -1,33 +1,12 @@
 use doer_runner;
-use doer_spec::{Runnable, StdIo as SpecStdIo};
-use std::collections::HashSet;
+use doer_spec::Runnable;
 
 fn simple_runnable(name: &str, command: &str) -> Runnable {
-    Runnable {
-        name: name.to_string(),
-        commands: vec![command.to_string()],
-        cwd: None,
-        env_vars: HashSet::new(),
-        user: None,
-        background: false,
-        stderr: SpecStdIo::Inherit,
-        stdout: SpecStdIo::Inherit,
-        stdin: SpecStdIo::Inherit,
-    }
+    Runnable::builder().name(name.to_string()).commands(vec![command.to_string()]).build()
 }
 
 fn bg_runnable(name: &str, command: &str) -> Runnable {
-    Runnable {
-        name: name.to_string(),
-        commands: vec![command.to_string()],
-        cwd: None,
-        env_vars: HashSet::new(),
-        user: None,
-        background: true,
-        stderr: SpecStdIo::Inherit,
-        stdout: SpecStdIo::Inherit,
-        stdin: SpecStdIo::Inherit,
-    }
+    Runnable::builder().name(name.to_string()).commands(vec![command.to_string()]).background(true).build()
 }
 
 #[tokio::test]
@@ -115,17 +94,11 @@ async fn test_run_all_fg_fails_stops() {
 
 #[tokio::test]
 async fn test_run_background_multi_command() {
-    let r = Runnable {
-        name: "multi-bg".into(),
-        commands: vec!["echo first".into(), "echo background_last".into()],
-        cwd: None,
-        env_vars: HashSet::new(),
-        user: None,
-        background: true,
-        stderr: SpecStdIo::Inherit,
-        stdout: SpecStdIo::Inherit,
-        stdin: SpecStdIo::Inherit,
-    };
+    let r = Runnable::builder()
+        .name("multi-bg".into())
+        .commands(vec!["echo first".into(), "echo background_last".into()])
+        .background(true)
+        .build();
     let mut child = doer_runner::run_background(&r).await.unwrap();
     let status = child.wait().await.unwrap();
     assert!(status.success());
@@ -144,17 +117,10 @@ async fn test_run_all_fg_multi_command() {
 
 #[tokio::test]
 async fn test_run_all_fg_multi_command_stops_on_failure() {
-    let r = Runnable {
-        name: "multi-fg".into(),
-        commands: vec!["echo first".into(), "exit 1".into(), "echo nope".into()],
-        cwd: None,
-        env_vars: HashSet::new(),
-        user: None,
-        background: false,
-        stderr: SpecStdIo::Inherit,
-        stdout: SpecStdIo::Inherit,
-        stdin: SpecStdIo::Inherit,
-    };
+    let r = Runnable::builder()
+        .name("multi-fg".into())
+        .commands(vec!["echo first".into(), "exit 1".into(), "echo nope".into()])
+        .build();
     let result = doer_runner::run_foreground(&r).await;
     assert!(result.is_err());
 }

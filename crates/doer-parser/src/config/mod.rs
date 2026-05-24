@@ -13,6 +13,7 @@ use kdl::{KdlDocument, KdlNode};
 use kdl_ext::*;
 use std::collections::{HashMap, HashSet};
 use template::*;
+use typed_builder::TypedBuilder;
 
 #[derive(Debug)]
 pub struct Config {
@@ -20,18 +21,27 @@ pub struct Config {
     pub git_hooks: Option<bool>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, TypedBuilder)]
 pub struct Task {
     pub name: String,
     pub commands: Vec<String>,
+    #[builder(default)]
     pub args: Vec<String>,
+    #[builder(default)]
     pub cwd: Option<String>,
+    #[builder(default)]
     pub env_vars: Vec<EnvVar>,
+    #[builder(default)]
     pub opts: Vec<Opt>,
+    #[builder(default)]
     pub deps: Vec<Dep>,
+    #[builder(default)]
     pub user: Option<String>,
+    #[builder(default)]
     pub stdin: Option<String>,
+    #[builder(default)]
     pub stderr: Option<String>,
+    #[builder(default)]
     pub stdout: Option<String>,
 }
 
@@ -345,17 +355,19 @@ impl Config {
                     Some(val) => parse_spec_stdio(val, "stderr", &call.task.name)?,
                     None => call.task.build_stderr(&call.args, &call.opt_overrides)?,
                 };
-                Ok(Runnable {
-                    name: call.task.name.clone(),
-                    commands: call.task.build_commands(&call.args, &call.opt_overrides)?,
-                    cwd: call.task.build_cwd(&call.args, &call.opt_overrides)?,
-                    env_vars: call.task.build_env_vars(&call.args, &call.opt_overrides)?,
-                    user: call.task.user.clone(),
-                    stdin,
-                    stdout,
-                    stderr,
-                    background: call.background,
-                })
+                let runnable = Runnable::builder()
+                    .name(call.task.name.clone())
+                    .commands(call.task.build_commands(&call.args, &call.opt_overrides)?)
+                    .cwd(call.task.build_cwd(&call.args, &call.opt_overrides)?)
+                    .env_vars(call.task.build_env_vars(&call.args, &call.opt_overrides)?)
+                    .user(call.task.user.clone())
+                    .stdin(stdin)
+                    .stdout(stdout)
+                    .stderr(stderr)
+                    .background(call.background)
+                    .build();
+
+                Ok(runnable)
             })
             .collect()
     }
