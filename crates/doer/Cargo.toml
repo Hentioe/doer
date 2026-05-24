@@ -9,4 +9,5 @@ clap = { workspace = true, features = ["derive"] }
 colored.workspace = true
 doer-parser.workspace = true
 doer-runner.workspace = true
+doer-spec.workspace = true
 tokio.workspace = true

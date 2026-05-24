@@ -140,6 +140,7 @@ dependencies = [
  "colored",
  "doer-parser",
  "doer-runner",
+ "doer-spec",
  "tokio",
 ]
 
@@ -165,6 +166,9 @@ dependencies = [
 [[package]]
 name = "doer-spec"
 version = "0.1.0"
+dependencies = [
+ "colored",
+]
 
 [[package]]
 name = "errno"

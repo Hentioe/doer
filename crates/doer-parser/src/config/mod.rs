@@ -6,6 +6,7 @@ mod template;
 mod helper;
 
 use crate::prelude::*;
+use anyhow::anyhow;
 use doer_spec::{EnvVar, Runnable, StdIo as SpecStdIo};
 use helper::*;
 use kdl::{KdlDocument, KdlNode};
@@ -312,7 +313,8 @@ impl Config {
     }
 
     pub fn from_kdl_str(content: &str) -> Result<Self> {
-        let doc: KdlDocument = content.parse().context("failed to parse KDL config")?;
+        // todo； 获取解析失败的具体信息
+        let doc: KdlDocument = content.parse().map_err(|_| anyhow!("failed to parse KDL content"))?;
         let tasks_node = doc.get("tasks").context("missing 'tasks' node in config")?;
         let children = tasks_node.children().context("'tasks' node has no children block")?;
 
@@ -383,7 +385,7 @@ pub fn parse_commands(node: &KdlNode, task_name: &str) -> Result<Vec<String>> {
         dash_nodes
             .iter()
             .map(|dash| {
-                ensure_entries_count(dash, 1, "'-'").with_context(|| format!("task '{}'", task_name))?;
+                ensure_entries_count(dash, 1, "'-'").with_context(|| format!("task: {}", task_name))?;
                 dash.first_string()
                     .with_context(|| format!("task '{}': '-' has no command", task_name))
                     .map(|s| s.to_string())

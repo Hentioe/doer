@@ -2,13 +2,13 @@ use colored::Colorize;
 use doer::cli::*;
 use doer::prelude::*;
 use doer_parser::Config;
+use doer_spec::error;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
 
-#[tokio::main]
-async fn main() -> Result<()> {
+async fn run() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config(&cli.config)?;
 
@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
             let runnables = config.build_all(&task_name, &args, &opt_overrides)?;
             let has_commands = runnables.iter().any(|r| !r.commands.is_empty());
             if !has_commands {
-                eprintln!("task '{task_name}' has no command to run");
+                error!("task '{task_name}' has no command to run");
                 return Ok(());
             }
             doer_runner::run_all(&runnables).await?;
@@ -62,10 +62,25 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[tokio::main]
+async fn main() {
+    if let Err(err) = run().await {
+        report_error(&err);
+        std::process::exit(1);
+    }
+}
+
 fn load_config(path: &str) -> Result<Config> {
     if !PathBuf::from(path).exists() {
-        bail!("no {PACKAGE_NAME}.kdl found");
+        bail!("no '{PACKAGE_NAME}.kdl' found");
     }
 
     Config::load_from_kdl_file(path)
+}
+
+fn report_error(err: &anyhow::Error) {
+    error!("{err}");
+    for cause in err.chain().skip(1) {
+        eprintln!("\t{}", cause);
+    }
 }

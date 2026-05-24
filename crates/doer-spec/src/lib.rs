@@ -1,3 +1,8 @@
+pub mod print;
+
+#[doc(hidden)]
+pub use colored;
+
 use std::{
     collections::HashSet,
     hash::{Hash, Hasher},
