@@ -1,0 +1,2 @@
+#!/bin/sh
+doer prepush stdio=void

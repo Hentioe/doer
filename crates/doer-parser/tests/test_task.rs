@@ -711,7 +711,7 @@ fn dep_with_opts(name: &str, opts: Vec<(&str, &str)>) -> Dep {
 }
 
 fn config(tasks: Vec<Task>) -> Config {
-    Config { tasks }
+    Config { tasks, git_hooks: None }
 }
 
 // --- build_dep: literal dep args, no parent reference ---

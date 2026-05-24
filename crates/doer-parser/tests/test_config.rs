@@ -616,3 +616,70 @@ mod dep_stdio_parsing {
         assert_eq!(dep.stdin.unwrap(), "{mode}");
     }
 }
+
+// ===================================================================
+// git-hooks parsing
+// ===================================================================
+
+#[test]
+fn git_hooks_omitted_defaults_to_none() {
+    let cfg = Config::from_kdl_str(
+        r#"tasks {
+            test { - "echo hi" }
+        }"#,
+    )
+    .unwrap();
+    assert!(cfg.git_hooks.is_none());
+}
+
+#[test]
+fn git_hooks_true() {
+    let cfg = Config::from_kdl_str(
+        r#"git-hooks #true
+
+        tasks {
+            test { - "echo hi" }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.git_hooks, Some(true));
+}
+
+#[test]
+fn git_hooks_false() {
+    let cfg = Config::from_kdl_str(
+        r#"git-hooks #false
+
+        tasks {
+            test { - "echo hi" }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.git_hooks, Some(false));
+}
+
+#[test]
+fn git_hooks_non_bool_is_error() {
+    let err = Config::from_kdl_str(
+        r#"git-hooks "string"
+
+        tasks {
+            test { - "echo hi" }
+        }"#,
+    )
+    .unwrap_err();
+    assert!(format!("{:#}", err).contains("not a boolean"), "error: {err}");
+}
+
+#[test]
+fn git_hooks_too_many_entries_is_error() {
+    let err = Config::from_kdl_str(
+        r#"git-hooks #true #false
+
+        tasks {
+            test { - "echo hi" }
+        }"#,
+    )
+    .unwrap_err();
+    assert!(format!("{:#}", err).contains("expected 1 entry"));
+}

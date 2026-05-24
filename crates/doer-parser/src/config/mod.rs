@@ -16,6 +16,7 @@ use template::*;
 #[derive(Debug)]
 pub struct Config {
     pub tasks: Vec<Task>,
+    pub git_hooks: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -315,6 +316,18 @@ impl Config {
         let tasks_node = doc.get("tasks").context("missing 'tasks' node in config")?;
         let children = tasks_node.children().context("'tasks' node has no children block")?;
 
+        let git_hooks = doc
+            .nodes()
+            .iter()
+            .find(|n| n.name().value() == "git-hooks")
+            .map(|n| {
+                let entries = n.entries();
+                ensure!(entries.len() == 1, "git-hooks: expected 1 entry, got {}", entries.len());
+                let val = entries.first().context("git-hooks: expected a boolean value")?.value();
+                val.as_bool().with_context(|| format!("git-hooks value is not a boolean: {val:?}"))
+            })
+            .transpose()?;
+
         let mut tasks = Vec::new();
 
         for node in children.nodes() {
@@ -349,7 +362,7 @@ impl Config {
             });
         }
 
-        Ok(Config { tasks })
+        Ok(Config { tasks, git_hooks })
     }
 }
 
@@ -513,7 +526,7 @@ fn parse_dep_background(node: &KdlNode) -> Result<bool> {
     match bg.entries().len() {
         0 => Ok(true),
         1 => {
-            let val = bg.entries().first().unwrap().value();
+            let val = bg.entries().first().context("dep background: expected a boolean value")?.value();
             val.as_bool().with_context(|| format!("dep background value is not a boolean: {val:?}"))
         }
         _ => bail!("dep: background node must have at most 1 entry"),

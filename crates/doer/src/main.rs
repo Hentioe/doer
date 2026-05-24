@@ -36,6 +36,8 @@ async fn main() -> Result<()> {
             }
         }
         Some(task_name) => {
+            doer::git_hooks::ensure_hooks(&config)?;
+
             let mut args = Vec::new();
             let mut opt_overrides = HashMap::new();
 
