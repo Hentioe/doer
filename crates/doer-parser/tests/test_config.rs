@@ -129,7 +129,7 @@ fn opt_valid() {
     let node = first_node(&doc);
     let opt = parse_opt(node, "test").unwrap();
     assert_eq!(opt.name, "mode");
-    assert_eq!(opt.value, "debug");
+    assert!(matches!(opt.value, OptValue::String(v) if v == "debug"));
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn opt_integer_value() {
     let node = first_node(&doc);
     let opt = parse_opt(node, "test").unwrap();
     assert_eq!(opt.name, "count");
-    assert_eq!(opt.value, "5");
+    assert!(matches!(opt.value, OptValue::String(v) if v == "5"));
 }
 
 #[test]
@@ -171,7 +171,7 @@ fn opt_float_value() {
     let node = first_node(&doc);
     let opt = parse_opt(node, "test").unwrap();
     assert_eq!(opt.name, "ratio");
-    assert_eq!(opt.value, "3.14");
+    assert!(matches!(opt.value, OptValue::String(v) if v == "3.14"));
 }
 
 #[test]
@@ -180,15 +180,42 @@ fn opt_negative_integer_value() {
     let node = first_node(&doc);
     let opt = parse_opt(node, "test").unwrap();
     assert_eq!(opt.name, "offset");
-    assert_eq!(opt.value, "-1");
+    assert!(matches!(opt.value, OptValue::String(v) if v == "-1"));
 }
 
 #[test]
-fn opt_bool_value_is_rejected() {
+fn opt_bool_true_value() {
     let doc = parse_doc(r#"opt flag=#true"#);
     let node = first_node(&doc);
-    let err = parse_opt(node, "test").unwrap_err();
-    assert!(format!("{:#}", err).contains("not a string or number"));
+    let opt = parse_opt(node, "test").unwrap();
+    assert_eq!(opt.name, "flag");
+    assert!(matches!(opt.value, OptValue::Bool(true)));
+}
+
+#[test]
+fn opt_bool_false_value() {
+    let doc = parse_doc(r#"opt flag=#false"#);
+    let node = first_node(&doc);
+    let opt = parse_opt(node, "test").unwrap();
+    assert_eq!(opt.name, "flag");
+    assert!(matches!(opt.value, OptValue::Bool(false)));
+}
+
+#[test]
+fn opt_non_bool_not_marked_boolean() {
+    let doc = parse_doc(r#"opt mode="debug""#);
+    let node = first_node(&doc);
+    let opt = parse_opt(node, "test").unwrap();
+    assert_eq!(opt.name, "mode");
+    assert!(matches!(opt.value, OptValue::String(v) if v == "debug"));
+}
+
+#[test]
+fn opt_integer_not_marked_boolean() {
+    let doc = parse_doc(r#"opt count=5"#);
+    let node = first_node(&doc);
+    let opt = parse_opt(node, "test").unwrap();
+    assert!(matches!(opt.value, OptValue::String(_)));
 }
 
 // ===================================================================

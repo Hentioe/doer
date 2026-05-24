@@ -38,6 +38,12 @@ tasks {
             stderr "{stdio}"
         }
     }
+    // 一个布尔选项的例子
+    docker-up {
+        - "docker compose up -d {--remove-orphans}"
+        opt prune=#false
+        opt "--remove-orphans"="{prune}"
+    }
     format "cargo fmt"
     build "cargo build"
     test {

@@ -1,4 +1,4 @@
-use doer_parser::config::{Config, Dep, Opt, Task, TaskCall};
+use doer_parser::config::{Config, Dep, Opt, OptValue, Task, TaskCall};
 use doer_spec::EnvVar;
 use std::collections::{HashMap, HashSet};
 
@@ -17,7 +17,7 @@ fn task_with_cwd(name: &str, command: &str, cwd: Option<&str>, args: Vec<&str>, 
             .iter()
             .map(|(k, v)| Opt {
                 name: k.to_string(),
-                value: v.to_string(),
+                value: OptValue::String(v.to_string()),
             })
             .collect(),
         deps: vec![],
@@ -51,7 +51,7 @@ fn task_with_env(
             .iter()
             .map(|(k, v)| Opt {
                 name: k.to_string(),
-                value: v.to_string(),
+                value: OptValue::String(v.to_string()),
             })
             .collect(),
         deps: vec![],
@@ -73,7 +73,7 @@ fn task_with_deps(name: &str, command: &str, args: Vec<&str>, opts: Vec<(&str, &
             .iter()
             .map(|(k, v)| Opt {
                 name: k.to_string(),
-                value: v.to_string(),
+                value: OptValue::String(v.to_string()),
             })
             .collect(),
         deps,
@@ -88,12 +88,16 @@ fn s(v: &str) -> String {
     v.to_string()
 }
 
-fn no_overrides() -> HashMap<String, String> {
+fn no_overrides() -> HashMap<String, OptValue> {
     HashMap::new()
 }
 
-fn overrides(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-    pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+fn overrides(pairs: &[(&str, &str)]) -> HashMap<String, OptValue> {
+    pairs.iter().map(|(k, v)| (k.to_string(), OptValue::String(v.to_string()))).collect()
+}
+
+fn bool_overrides(names: &[&str]) -> HashMap<String, OptValue> {
+    names.iter().map(|k| (k.to_string(), OptValue::Bool(true))).collect()
 }
 
 fn h(pairs: &[(&str, &str)]) -> HashSet<EnvVar> {
@@ -151,6 +155,366 @@ fn opt_substitution_single() {
     assert_eq!(
         t.command_template(&no_overrides()).unwrap(),
         vec!["cargo build --debug"]
+    );
+}
+
+// ===================================================================
+// command_template — boolean opts (flag chains)
+// ===================================================================
+
+#[test]
+fn bool_opt_false_emits_empty_flag() {
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up -d {--remove-orphans}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(false),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    assert_eq!(
+        t.command_template(&no_overrides()).unwrap(),
+        vec!["docker compose up -d"]
+    );
+}
+
+#[test]
+fn bool_opt_true_emits_flag_name() {
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up -d {--remove-orphans}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(true),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    assert_eq!(
+        t.command_template(&no_overrides()).unwrap(),
+        vec!["docker compose up -d --remove-orphans"]
+    );
+}
+
+#[test]
+fn bool_opt_override_true_activates_flag() {
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up -d {--remove-orphans}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(false),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    assert_eq!(
+        t.command_template(&bool_overrides(&["prune"])).unwrap(),
+        vec!["docker compose up -d --remove-orphans"]
+    );
+}
+
+#[test]
+fn bool_opt_override_false_deactivates_flag() {
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up -d {--remove-orphans}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(true),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    assert_eq!(
+        t.command_template(&overrides(&[("prune", "false")])).unwrap(),
+        vec!["docker compose up -d"]
+    );
+}
+
+#[test]
+fn non_bool_ref_not_treated_as_flag() {
+    let t = Task {
+        name: "test".into(),
+        commands: vec!["cmd {a}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "mode".into(),
+                value: OptValue::String("debug".into()),
+            },
+            Opt {
+                name: "a".into(),
+                value: OptValue::String("{mode}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    // Non-bool opt references are left as raw {ref} value (existing behavior)
+    assert_eq!(t.command_template(&no_overrides()).unwrap(), vec!["cmd {mode}"]);
+}
+
+#[test]
+fn bool_opt_in_template_directly() {
+    let t = Task {
+        name: "test".into(),
+        commands: vec!["cmd {prune}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![Opt {
+            name: "prune".into(),
+            value: OptValue::Bool(true),
+        }],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    // Bool opt used directly in template emits its name or empty string
+    assert_eq!(t.command_template(&no_overrides()).unwrap(), vec!["cmd prune"]);
+}
+
+// ===================================================================
+// build_commands — boolean opts (flag chains)
+// ===================================================================
+
+#[test]
+fn build_bool_opt_false_flag_empty() {
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up -d {--remove-orphans}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(false),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    assert_eq!(
+        t.build_commands(&[], &no_overrides()).unwrap(),
+        vec!["docker compose up -d"]
+    );
+}
+
+#[test]
+fn build_bool_opt_true_flag_present() {
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up -d {--remove-orphans}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(true),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    assert_eq!(
+        t.build_commands(&[], &no_overrides()).unwrap(),
+        vec!["docker compose up -d --remove-orphans"]
+    );
+}
+
+#[test]
+fn build_bool_opt_override_from_cli_flag() {
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up -d {--remove-orphans}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(false),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    // Simulating `doer docker-up --prune` → opt_overrides has prune=Bool(true)
+    assert_eq!(
+        t.build_commands(&[], &bool_overrides(&["prune"])).unwrap(),
+        vec!["docker compose up -d --remove-orphans"]
+    );
+}
+
+#[test]
+fn build_bool_opt_override_to_false() {
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up -d {--remove-orphans}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(true),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    assert_eq!(
+        t.build_commands(&[], &overrides(&[("prune", "false")])).unwrap(),
+        vec!["docker compose up -d"]
+    );
+}
+
+#[test]
+fn build_flag_opt_overridden_directly_via_cli() {
+    // Simulating `doer docker-up --remove-orphans` → opt_overrides has "--remove-orphans"=Bool(true)
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up -d {--remove-orphans}".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(false),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    assert_eq!(
+        t.build_commands(&[], &bool_overrides(&["--remove-orphans"])).unwrap(),
+        vec!["docker compose up -d --remove-orphans"]
+    );
+}
+
+#[test]
+fn bool_opt_in_middle_strips_whitespace() {
+    let t = Task {
+        name: "docker-up".into(),
+        commands: vec!["docker compose up {--remove-orphans} -d".into()],
+        args: vec![],
+        cwd: None,
+        env_vars: vec![],
+        opts: vec![
+            Opt {
+                name: "prune".into(),
+                value: OptValue::Bool(false),
+            },
+            Opt {
+                name: "--remove-orphans".into(),
+                value: OptValue::String("{prune}".into()),
+            },
+        ],
+        deps: vec![],
+        user: None,
+        stdin: None,
+        stdout: None,
+        stderr: None,
+    };
+    assert_eq!(
+        t.build_commands(&[], &no_overrides()).unwrap(),
+        vec!["docker compose up -d"]
     );
 }
 
@@ -669,7 +1033,7 @@ fn task_with_stdio(
             .iter()
             .map(|(k, v)| Opt {
                 name: k.to_string(),
-                value: v.to_string(),
+                value: OptValue::String(v.to_string()),
             })
             .collect(),
         deps: vec![],
@@ -700,7 +1064,7 @@ fn dep_with_opts(name: &str, opts: Vec<(&str, &str)>) -> Dep {
             .iter()
             .map(|(k, v)| Opt {
                 name: k.to_string(),
-                value: v.to_string(),
+                value: OptValue::String(v.to_string()),
             })
             .collect(),
         background: false,
@@ -802,7 +1166,10 @@ fn build_dep_own_opts() {
     let r = parent.build_dep(&parent.deps[0], &[], &no_overrides()).unwrap();
 
     assert!(r.args.is_empty());
-    assert_eq!(r.opt_overrides.get("mode").unwrap(), "release");
+    assert_eq!(
+        r.opt_overrides.get("mode").unwrap(),
+        &OptValue::String("release".to_string())
+    );
 }
 
 #[test]
@@ -817,7 +1184,10 @@ fn build_dep_opt_references_parent_var() {
 
     let r = parent.build_dep(&parent.deps[0], &[], &no_overrides()).unwrap();
 
-    assert_eq!(r.opt_overrides.get("mode").unwrap(), "false");
+    assert_eq!(
+        r.opt_overrides.get("mode").unwrap(),
+        &OptValue::String("false".to_string())
+    );
 }
 
 #[test]
@@ -833,7 +1203,10 @@ fn build_dep_opt_does_not_leak_parent_opts() {
     let r = parent.build_dep(&parent.deps[0], &[], &no_overrides()).unwrap();
 
     assert_eq!(r.opt_overrides.len(), 1);
-    assert_eq!(r.opt_overrides.get("mode").unwrap(), "release");
+    assert_eq!(
+        r.opt_overrides.get("mode").unwrap(),
+        &OptValue::String("release".to_string())
+    );
     assert!(!r.opt_overrides.contains_key("debug"));
     assert!(!r.opt_overrides.contains_key("other"));
 }
@@ -923,7 +1296,7 @@ fn dep_opt_overrides_are_independent() {
         env_vars: vec![],
         opts: vec![Opt {
             name: "b".into(),
-            value: "child_default".into(),
+            value: OptValue::String("child_default".into()),
         }],
         deps: vec![],
         user: None,
@@ -1253,7 +1626,7 @@ fn dep_stdio_override_resolves_parent_variable() {
         env_vars: vec![],
         opts: vec![Opt {
             name: "mode".into(),
-            value: "null".into(),
+            value: OptValue::String("null".into()),
         }],
         deps: vec![Dep {
             name: "child".into(),

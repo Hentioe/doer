@@ -2,6 +2,9 @@ use crate::prelude::*;
 use doer_spec::EnvVar;
 use std::collections::HashMap;
 
+/// 标记位占位符：用于禁用的 flag 选项，渲染时其自身及前一个空白字符会被清除。
+pub const FLAG_HIDDEN: &str = "\x00";
+
 fn apply_template<F>(template: &str, label: &str, resolve: F) -> Result<String>
 where
     F: Fn(&str) -> Result<String>,
@@ -20,7 +23,15 @@ where
                 inner.push(ch);
             }
             ensure!(closed, "unclosed '{{' in {label}: {template}");
-            result.push_str(&resolve(&inner)?);
+            let resolved = resolve(&inner)?;
+            if resolved == FLAG_HIDDEN {
+                // 移除前一个空白字符
+                if result.ends_with(|c: char| c.is_ascii_whitespace()) {
+                    result.pop();
+                }
+            } else {
+                result.push_str(&resolved);
+            }
         } else if ch == '}' {
             bail!("unexpected '}}' in {label}: {template}");
         } else {

@@ -35,10 +35,16 @@ pub struct Task {
     pub stdout: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum OptValue {
+    String(String),
+    Bool(bool),
+}
+
+#[derive(Debug, Clone)]
 pub struct Opt {
     pub name: String,
-    pub value: String,
+    pub value: OptValue,
 }
 
 #[derive(Debug)]
@@ -53,41 +59,85 @@ pub struct Dep {
 }
 
 impl Task {
-    fn substitution_context(&self, opt_overrides: &HashMap<String, String>) -> HashMap<String, String> {
+    fn substitution_context(&self, opt_overrides: &HashMap<String, OptValue>) -> HashMap<String, String> {
         let mut ctx = HashMap::new();
         for (i, arg) in self.args.iter().enumerate() {
             ctx.insert(arg.clone(), format!("{{{i}}}"));
         }
+        // 首先插入所有 opt 的原始字符串值（无论是直接的字符串还是布尔值），以便后续解析时可以引用
         for opt in &self.opts {
-            let value = opt_overrides.get(&opt.name).unwrap_or(&opt.value);
-            ctx.insert(opt.name.clone(), value.clone());
+            let value = match opt_overrides.get(&opt.name).unwrap_or(&opt.value) {
+                OptValue::String(s) => s.clone(),
+                OptValue::Bool(b) => b.to_string(),
+            };
+            ctx.insert(opt.name.clone(), value);
+        }
+        // 第二轮：解析布尔标志 — 任何布尔选项（或其默认值引用布尔值的选项）在为 true 时发出选项自身的名称，为 false 时发出空字符串。
+        for opt in &self.opts {
+            match &opt.value {
+                OptValue::Bool(_) => {
+                    let enabled = matches!(opt_overrides.get(&opt.name).unwrap_or(&opt.value), OptValue::Bool(true));
+                    let flag = if enabled {
+                        opt.name.clone()
+                    } else {
+                        FLAG_HIDDEN.to_string()
+                    };
+                    ctx.insert(opt.name.clone(), flag);
+                }
+                OptValue::String(s) => {
+                    if let Some(ref_name) = s.strip_prefix('{').and_then(|s| s.strip_suffix('}'))
+                        && self.opts.iter().any(|o| matches!(&o.value, OptValue::Bool(_)) && o.name == ref_name)
+                    {
+                        let enabled = if let Some(override_val) = opt_overrides.get(&opt.name) {
+                            matches!(override_val, OptValue::Bool(true))
+                        } else if let Some(ref_opt) = self.opts.iter().find(|o| o.name == ref_name) {
+                            matches!(
+                                opt_overrides.get(ref_name).unwrap_or(&ref_opt.value),
+                                OptValue::Bool(true)
+                            )
+                        } else {
+                            false
+                        };
+                        let flag = if enabled {
+                            opt.name.clone()
+                        } else {
+                            FLAG_HIDDEN.to_string()
+                        };
+                        ctx.insert(opt.name.clone(), flag);
+                    }
+                }
+            }
         }
         ctx
     }
 
-    pub fn command_template(&self, opt_overrides: &HashMap<String, String>) -> Result<Vec<String>> {
+    pub fn command_template(&self, opt_overrides: &HashMap<String, OptValue>) -> Result<Vec<String>> {
         self.commands.iter().map(|cmd| cmd.resolve_template(&self.substitution_context(opt_overrides))).collect()
     }
 
-    pub fn build_commands(&self, args: &[String], opt_overrides: &HashMap<String, String>) -> Result<Vec<String>> {
+    pub fn build_commands(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<Vec<String>> {
         self.commands.iter().map(|cmd| cmd.resolve_both(&self.substitution_context(opt_overrides), args)).collect()
     }
 
-    pub fn cwd_template(&self, opt_overrides: &HashMap<String, String>) -> Result<Option<String>> {
+    pub fn cwd_template(&self, opt_overrides: &HashMap<String, OptValue>) -> Result<Option<String>> {
         self.cwd.as_ref().map(|cwd| cwd.resolve_template(&self.substitution_context(opt_overrides))).transpose()
     }
 
-    pub fn build_cwd(&self, args: &[String], opt_overrides: &HashMap<String, String>) -> Result<Option<String>> {
+    pub fn build_cwd(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<Option<String>> {
         let ctx = self.substitution_context(opt_overrides);
         self.cwd.as_ref().map(|cwd| cwd.resolve_template(&ctx)?.resolve_args(args, "cwd template")).transpose()
     }
 
-    pub fn env_vars_template(&self, opt_overrides: &HashMap<String, String>) -> Result<HashSet<EnvVar>> {
+    pub fn env_vars_template(&self, opt_overrides: &HashMap<String, OptValue>) -> Result<HashSet<EnvVar>> {
         let ctx = self.substitution_context(opt_overrides);
         self.env_vars.iter().map(|ev| ev.resolve_template(&ctx)).collect()
     }
 
-    pub fn build_env_vars(&self, args: &[String], opt_overrides: &HashMap<String, String>) -> Result<HashSet<EnvVar>> {
+    pub fn build_env_vars(
+        &self,
+        args: &[String],
+        opt_overrides: &HashMap<String, OptValue>,
+    ) -> Result<HashSet<EnvVar>> {
         let ctx = self.substitution_context(opt_overrides);
         self.env_vars
             .iter()
@@ -98,15 +148,15 @@ impl Task {
             .collect()
     }
 
-    pub fn build_stdin(&self, args: &[String], opt_overrides: &HashMap<String, String>) -> Result<SpecStdIo> {
+    pub fn build_stdin(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<SpecStdIo> {
         self.build_stdio_field(&self.stdin, args, opt_overrides, "stdin")
     }
 
-    pub fn build_stdout(&self, args: &[String], opt_overrides: &HashMap<String, String>) -> Result<SpecStdIo> {
+    pub fn build_stdout(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<SpecStdIo> {
         self.build_stdio_field(&self.stdout, args, opt_overrides, "stdout")
     }
 
-    pub fn build_stderr(&self, args: &[String], opt_overrides: &HashMap<String, String>) -> Result<SpecStdIo> {
+    pub fn build_stderr(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<SpecStdIo> {
         self.build_stdio_field(&self.stderr, args, opt_overrides, "stderr")
     }
 
@@ -114,7 +164,7 @@ impl Task {
         &self,
         field: &Option<String>,
         args: &[String],
-        opt_overrides: &HashMap<String, String>,
+        opt_overrides: &HashMap<String, OptValue>,
         label: &str,
     ) -> Result<SpecStdIo> {
         let Some(raw) = field else {
@@ -135,16 +185,19 @@ impl Task {
         &self,
         dep: &Dep,
         args: &[String],
-        opt_overrides: &HashMap<String, String>,
+        opt_overrides: &HashMap<String, OptValue>,
     ) -> Result<DepResolution> {
         let ctx = self.substitution_context(opt_overrides);
         let resolved_args: Vec<String> =
             dep.args.iter().map(|arg| arg.resolve_both(&ctx, args)).collect::<Result<Vec<_>>>()?;
-        let resolved_opts: HashMap<String, String> = dep
+        let resolved_opts: HashMap<String, OptValue> = dep
             .opts
             .iter()
             .map(|opt| {
-                let resolved_value = opt.value.resolve_both(&ctx, args)?;
+                let resolved_value = match &opt.value {
+                    OptValue::String(s) => OptValue::String(s.resolve_both(&ctx, args)?),
+                    OptValue::Bool(b) => OptValue::Bool(*b),
+                };
                 Ok((opt.name.clone(), resolved_value))
             })
             .collect::<Result<HashMap<_, _>>>()?;
@@ -167,7 +220,7 @@ impl Task {
 pub struct TaskCall<'a> {
     pub task: &'a Task,
     pub args: Vec<String>,
-    pub opt_overrides: HashMap<String, String>,
+    pub opt_overrides: HashMap<String, OptValue>,
     pub background: bool,
     pub stdin: Option<String>,
     pub stdout: Option<String>,
@@ -177,7 +230,7 @@ pub struct TaskCall<'a> {
 pub struct DepResolution {
     pub name: String,
     pub args: Vec<String>,
-    pub opt_overrides: HashMap<String, String>,
+    pub opt_overrides: HashMap<String, OptValue>,
     pub background: bool,
     pub stdin: Option<String>,
     pub stdout: Option<String>,
@@ -193,7 +246,7 @@ impl Config {
         &'a self,
         task_name: &str,
         args: &[String],
-        opt_overrides: &HashMap<String, String>,
+        opt_overrides: &HashMap<String, OptValue>,
     ) -> Result<Vec<TaskCall<'a>>> {
         let mut resolved = Vec::new();
         let mut resolved_set = HashSet::new();
@@ -219,7 +272,7 @@ impl Config {
         &'a self,
         task_name: &str,
         args: Vec<String>,
-        opt_overrides: HashMap<String, String>,
+        opt_overrides: HashMap<String, OptValue>,
         background: bool,
         stdin: Option<String>,
         stdout: Option<String>,
@@ -275,7 +328,7 @@ impl Config {
         &self,
         task_name: &str,
         args: &[String],
-        opt_overrides: &HashMap<String, String>,
+        opt_overrides: &HashMap<String, OptValue>,
     ) -> Result<Vec<Runnable>> {
         self.build_task_with_deps(task_name, args, opt_overrides)?
             .iter()
@@ -425,8 +478,8 @@ pub fn parse_opt(node: &KdlNode, task_name: &str) -> Result<Opt> {
     ensure_entries_count(node, 1, "opt").with_context(|| format!("task '{}'", task_name))?;
     let entry = node.first_entry().with_context(|| format!("task '{}': opt has no entry", task_name))?;
     let name = entry.key().with_context(|| format!("task '{}': opt has no key", task_name))?.to_string();
-    let value = entry_value_to_string(entry.value())
-        .with_context(|| format!("task '{}': opt value is not a string or number", task_name))?;
+    let value = entry_opt_value(entry.value())
+        .with_context(|| format!("task '{}': opt value is not a string, number, or boolean", task_name))?;
     Ok(Opt { name, value })
 }
 
@@ -441,6 +494,13 @@ fn entry_value_to_string(val: &kdl::KdlValue) -> Option<String> {
         return Some(f.to_string());
     }
     None
+}
+
+fn entry_opt_value(val: &kdl::KdlValue) -> Option<OptValue> {
+    if let Some(b) = val.as_bool() {
+        return Some(OptValue::Bool(b));
+    }
+    entry_value_to_string(val).map(OptValue::String)
 }
 
 // ---- deps ----
