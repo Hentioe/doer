@@ -841,9 +841,15 @@ fn build_env_vars_missing_arg() {
 #[test]
 fn stdio_default_when_not_configured() {
     let t = task("run", "cmd", vec![], vec![]);
-    assert_eq!(t.build_stdin(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Inherit);
-    assert_eq!(t.build_stdout(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Inherit);
-    assert_eq!(t.build_stderr(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Inherit);
+    assert_eq!(t.build_stdin(&[], &no_overrides()).unwrap(), doer_spec::SpecIo::Inherit);
+    assert_eq!(
+        t.build_stdout(&[], &no_overrides()).unwrap(),
+        doer_spec::SpecIo::Inherit
+    );
+    assert_eq!(
+        t.build_stderr(&[], &no_overrides()).unwrap(),
+        doer_spec::SpecIo::Inherit
+    );
 }
 
 #[test]
@@ -857,15 +863,18 @@ fn stdio_literal_values() {
         vec![],
         vec![],
     );
-    assert_eq!(t.build_stdin(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Null);
-    assert_eq!(t.build_stdout(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Inherit);
-    assert_eq!(t.build_stderr(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Null);
+    assert_eq!(t.build_stdin(&[], &no_overrides()).unwrap(), doer_spec::SpecIo::Null);
+    assert_eq!(
+        t.build_stdout(&[], &no_overrides()).unwrap(),
+        doer_spec::SpecIo::Inherit
+    );
+    assert_eq!(t.build_stderr(&[], &no_overrides()).unwrap(), doer_spec::SpecIo::Null);
 }
 
 #[test]
 fn stdio_with_opt_variable() {
     let t = task_with_stdio("run", "cmd", Some("{mode}"), None, None, vec![], vec![("mode", "null")]);
-    assert_eq!(t.build_stdin(&[], &no_overrides()).unwrap(), doer_spec::StdIo::Null);
+    assert_eq!(t.build_stdin(&[], &no_overrides()).unwrap(), doer_spec::SpecIo::Null);
 }
 
 #[test]
@@ -881,7 +890,7 @@ fn stdio_with_opt_override() {
     );
     assert_eq!(
         t.build_stdin(&[], &overrides(&[("mode", "null")])).unwrap(),
-        doer_spec::StdIo::Null
+        doer_spec::SpecIo::Null
     );
 }
 
@@ -890,7 +899,7 @@ fn stdio_with_arg_variable() {
     let t = task_with_stdio("run", "cmd", Some("{mode}"), None, None, vec!["mode"], vec![]);
     assert_eq!(
         t.build_stdin(&[s("void")], &no_overrides()).unwrap(),
-        doer_spec::StdIo::Null
+        doer_spec::SpecIo::Null
     );
 }
 
@@ -941,6 +950,7 @@ fn dep_with_args(name: &str, args: Vec<&str>) -> Dep {
         stdin: None,
         stdout: None,
         stderr: None,
+        nice: None,
     }
 }
 
@@ -959,6 +969,7 @@ fn dep_with_opts(name: &str, opts: Vec<(&str, &str)>) -> Dep {
         stdin: None,
         stdout: None,
         stderr: None,
+        nice: None,
     }
 }
 
@@ -1031,6 +1042,7 @@ fn build_dep_literal_and_ref_mixed() {
             stdin: None,
             stdout: None,
             stderr: None,
+            nice: None,
         }],
     );
 
@@ -1414,6 +1426,7 @@ fn build_all_propagates_background_flag() {
         stdin: None,
         stdout: None,
         stderr: None,
+        nice: None,
     };
     let parent_task = task_with_deps("parent", "echo parent", vec![], vec![], vec![dep]);
     let child_task = task("child", "echo child", vec![], vec![]);
@@ -1452,6 +1465,7 @@ fn dep_stdio_literal_override() {
             stdin: Some("void".into()),
             stdout: Some("null".into()),
             stderr: None,
+            nice: None,
         }])
         .build();
     let cfg = config(vec![parent, child]);
@@ -1460,14 +1474,14 @@ fn dep_stdio_literal_override() {
     assert_eq!(runnables.len(), 2);
 
     // dep overrides child's stdin and stdout
-    assert_eq!(runnables[0].stdin, doer_spec::StdIo::Null); // "void" -> Null
-    assert_eq!(runnables[0].stdout, doer_spec::StdIo::Null); // "null" -> Null
-    assert_eq!(runnables[0].stderr, doer_spec::StdIo::Inherit); // not overridden, uses child's own
+    assert_eq!(runnables[0].stdin, doer_spec::SpecIo::Null); // "void" -> Null
+    assert_eq!(runnables[0].stdout, doer_spec::SpecIo::Null); // "null" -> Null
+    assert_eq!(runnables[0].stderr, doer_spec::SpecIo::Inherit); // not overridden, uses child's own
 
     // parent unaffected
-    assert_eq!(runnables[1].stdin, doer_spec::StdIo::Inherit);
-    assert_eq!(runnables[1].stdout, doer_spec::StdIo::Inherit);
-    assert_eq!(runnables[1].stderr, doer_spec::StdIo::Inherit);
+    assert_eq!(runnables[1].stdin, doer_spec::SpecIo::Inherit);
+    assert_eq!(runnables[1].stdout, doer_spec::SpecIo::Inherit);
+    assert_eq!(runnables[1].stderr, doer_spec::SpecIo::Inherit);
 }
 
 #[test]
@@ -1490,12 +1504,13 @@ fn dep_stdio_override_resolves_parent_variable() {
             stdin: None,
             stdout: Some("{mode}".into()),
             stderr: None,
+            nice: None,
         }])
         .build();
     let cfg = config(vec![parent, child]);
     let runnables = cfg.build_all("parent", &[], &no_overrides()).unwrap();
 
-    assert_eq!(runnables[0].stdout, doer_spec::StdIo::Null);
+    assert_eq!(runnables[0].stdout, doer_spec::SpecIo::Null);
 }
 
 // ===================================================================
@@ -1541,4 +1556,104 @@ fn no_command_task_inherits_dep_order() {
     let resolved = cfg.build_task_with_deps("group", &[], &no_overrides()).unwrap();
 
     assert_eq!(task_names(&resolved), vec!["c", "d", "b", "a", "group"]);
+}
+
+fn task_with_nice(name: &str, command: &str, nice: Option<i32>) -> Task {
+    Task::builder().name(name.to_string()).commands(vec![command.to_string()]).nice(nice).build()
+}
+
+// ===================================================================
+// nice propagation
+// ===================================================================
+
+#[test]
+fn task_nice_carried_to_runnable() {
+    let child = task_with_nice("child", "echo child", Some(-10));
+    let parent = task_with_deps(
+        "parent",
+        "echo parent",
+        vec![],
+        vec![],
+        vec![dep_with_args("child", vec![])],
+    );
+    let cfg = config(vec![parent, child]);
+
+    let runnables = cfg.build_all("parent", &[], &no_overrides()).unwrap();
+
+    assert_eq!(runnables.len(), 2);
+    assert_eq!(runnables[0].name, "child");
+    assert_eq!(runnables[0].nice, Some(-10));
+    assert_eq!(runnables[1].name, "parent");
+    assert_eq!(runnables[1].nice, None);
+}
+
+#[test]
+fn task_nice_none_by_default() {
+    let child = task("child", "echo child", vec![], vec![]);
+    let parent = task_with_deps(
+        "parent",
+        "echo parent",
+        vec![],
+        vec![],
+        vec![dep_with_args("child", vec![])],
+    );
+    let cfg = config(vec![parent, child]);
+
+    let runnables = cfg.build_all("parent", &[], &no_overrides()).unwrap();
+
+    assert_eq!(runnables[0].nice, None);
+    assert_eq!(runnables[1].nice, None);
+}
+
+#[test]
+fn dep_nice_overrides_task_nice() {
+    let child = task_with_nice("child", "echo child", Some(-20));
+    let parent = Task::builder()
+        .name("parent".into())
+        .commands(vec!["echo parent".into()])
+        .deps(vec![Dep {
+            name: "child".into(),
+            args: vec![],
+            opts: vec![],
+            background: false,
+            stdin: None,
+            stdout: None,
+            stderr: None,
+            nice: Some(10),
+        }])
+        .build();
+    let cfg = config(vec![parent, child]);
+
+    let runnables = cfg.build_all("parent", &[], &no_overrides()).unwrap();
+
+    // dep's nice (10) should override child's nice (-20)
+    assert_eq!(runnables[0].name, "child");
+    assert_eq!(runnables[0].nice, Some(10));
+}
+
+#[test]
+fn dep_nice_carried_to_runnable() {
+    let child = task("child", "echo child", vec![], vec![]);
+    let parent = Task::builder()
+        .name("parent".into())
+        .commands(vec!["echo parent".into()])
+        .deps(vec![Dep {
+            name: "child".into(),
+            args: vec![],
+            opts: vec![],
+            background: false,
+            stdin: None,
+            stdout: None,
+            stderr: None,
+            nice: Some(5),
+        }])
+        .build();
+    let cfg = config(vec![parent, child]);
+
+    let runnables = cfg.build_all("parent", &[], &no_overrides()).unwrap();
+
+    assert_eq!(runnables[0].name, "child");
+    assert_eq!(runnables[0].nice, Some(5));
+    assert_eq!(runnables[1].name, "parent");
+    assert_eq!(runnables[1].nice, None);
 }

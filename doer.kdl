@@ -13,6 +13,7 @@ tasks {
     ping {
         - "echo starting ping..."
         - "ping localhost"
+        nice -10 // 设置 nice 以调整进程优先级
     }
     start-ping {
         - "echo ping will start in background..."
@@ -56,10 +57,6 @@ tasks {
         arg path
         opt bin=doer
         dep test
-        dep setcap {
-            arg "{bin}"
-            opt mode=release
-        }
     }
     run {
         - "cargo run --bin {bin}"

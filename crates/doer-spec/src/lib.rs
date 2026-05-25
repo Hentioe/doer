@@ -9,7 +9,9 @@ use std::{
 };
 use typed_builder::TypedBuilder;
 
-const VALID_STDIO_VALUES: &[&str] = &["default", "inherit", "null", "void"];
+pub const NICE_MIN: i32 = -20;
+pub const NICE_MAX: i32 = 19;
+pub const VALID_STDIO_VALUES: &[&str] = &["default", "inherit", "null", "void"];
 
 #[derive(Debug, TypedBuilder)]
 pub struct Runnable {
@@ -23,14 +25,14 @@ pub struct Runnable {
     pub env_vars: HashSet<EnvVar>,
     #[builder(default)]
     pub user: Option<String>,
-    #[builder(default = StdIo::Inherit)]
-    pub stdin: StdIo,
-    #[builder(default = StdIo::Inherit)]
-    pub stdout: StdIo,
-    #[builder(default = StdIo::Inherit)]
-    pub stderr: StdIo,
-    // #[builder(default, setter(strip_option))]
-    // pub nice: Option<i8>,
+    #[builder(default = SpecIo::Inherit)]
+    pub stdin: SpecIo,
+    #[builder(default = SpecIo::Inherit)]
+    pub stdout: SpecIo,
+    #[builder(default = SpecIo::Inherit)]
+    pub stderr: SpecIo,
+    #[builder(default)]
+    pub nice: Option<i32>,
     #[builder(default = false)]
     pub background: bool,
 }
@@ -42,35 +44,29 @@ pub struct EnvVar {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum StdIo {
+pub enum SpecIo {
     #[default]
     Inherit,
     Null,
 }
 
-impl StdIo {
-    pub fn valid_string_values() -> &'static [&'static str] {
-        VALID_STDIO_VALUES
-    }
-}
-
-impl TryFrom<&str> for StdIo {
+impl TryFrom<&str> for SpecIo {
     type Error = String;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
-            "inherit" | "default" => Ok(StdIo::Inherit),
-            "null" | "void" => Ok(StdIo::Null),
+            "inherit" | "default" => Ok(SpecIo::Inherit),
+            "null" | "void" => Ok(SpecIo::Null),
             _ => Err(format!("invalid stdio value: {}", value)),
         }
     }
 }
 
-impl From<StdIo> for std::process::Stdio {
-    fn from(value: StdIo) -> Self {
+impl From<SpecIo> for std::process::Stdio {
+    fn from(value: SpecIo) -> Self {
         match value {
-            StdIo::Inherit => std::process::Stdio::inherit(),
-            StdIo::Null => std::process::Stdio::null(),
+            SpecIo::Inherit => std::process::Stdio::inherit(),
+            SpecIo::Null => std::process::Stdio::null(),
         }
     }
 }

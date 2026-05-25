@@ -276,6 +276,69 @@ fn dep_arg_too_many() {
 }
 
 // ===================================================================
+// parse_optional_integer
+// ===================================================================
+
+#[test]
+fn optional_integer_present() {
+    let node = task_node(r#"task { nice -10 }"#);
+    assert_eq!(parse_optional_integer(&node, "test", "nice").unwrap(), Some(-10));
+}
+
+#[test]
+fn optional_integer_absent() {
+    let node = task_node(r#"task { arg "x" }"#);
+    assert_eq!(parse_optional_integer(&node, "test", "nice").unwrap(), None);
+}
+
+#[test]
+fn optional_integer_no_children_block() {
+    let node = task_node(r#"task "cmd""#);
+    assert_eq!(parse_optional_integer(&node, "test", "nice").unwrap(), None);
+}
+
+#[test]
+fn optional_integer_duplicate() {
+    let node = task_node(r#"task { nice -10; nice -5 }"#);
+    let err = parse_optional_integer(&node, "test", "nice").unwrap_err();
+    assert!(format!("{:#}", err).contains("expected at most 1 nice node, got 2"));
+}
+
+#[test]
+fn optional_integer_too_many_entries() {
+    let node = task_node(r#"task { nice -10 -5 }"#);
+    let err = parse_optional_integer(&node, "test", "nice").unwrap_err();
+    assert!(format!("{:#}", err).contains("expected 1 entries, got 2"));
+}
+
+#[test]
+fn optional_integer_non_integer_value() {
+    let node = task_node(r#"task { nice "foo" }"#);
+    let err = parse_optional_integer(&node, "test", "nice").unwrap_err();
+    assert!(format!("{:#}", err).contains("value is not an integer"));
+}
+
+#[test]
+fn optional_integer_out_of_range_negative() {
+    let node = task_node(r#"task { nice -30 }"#);
+    let err = parse_optional_integer(&node, "test", "nice").unwrap_err();
+    assert!(format!("{:#}", err).contains("out of range"));
+}
+
+#[test]
+fn optional_integer_out_of_range_positive() {
+    let node = task_node(r#"task { nice 25 }"#);
+    let err = parse_optional_integer(&node, "test", "nice").unwrap_err();
+    assert!(format!("{:#}", err).contains("out of range"));
+}
+
+#[test]
+fn optional_integer_positive() {
+    let node = task_node(r#"task { nice 10 }"#);
+    assert_eq!(parse_optional_integer(&node, "test", "nice").unwrap(), Some(10));
+}
+
+// ===================================================================
 // parse_optional_string
 // ===================================================================
 
@@ -642,6 +705,83 @@ mod dep_stdio_parsing {
         );
         assert_eq!(dep.stdin.unwrap(), "{mode}");
     }
+}
+
+// ===================================================================
+// nice parsing in tasks
+// ===================================================================
+
+#[test]
+fn task_nice_present() {
+    let cfg = Config::from_kdl_str(
+        r#"tasks {
+            test {
+                - "echo hi"
+                nice -10
+            }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.tasks[0].nice, Some(-10));
+}
+
+#[test]
+fn task_nice_absent() {
+    let cfg = Config::from_kdl_str(
+        r#"tasks {
+            test { - "echo hi" }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.tasks[0].nice, None);
+}
+
+#[test]
+fn task_nice_positive_value() {
+    let cfg = Config::from_kdl_str(
+        r#"tasks {
+            test {
+                - "echo hi"
+                nice 5
+            }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.tasks[0].nice, Some(5));
+}
+
+// ===================================================================
+// dep nice parsing
+// ===================================================================
+
+#[test]
+fn dep_nice_present() {
+    let cfg = Config::from_kdl_str(
+        r#"tasks {
+            parent {
+                - "echo parent"
+                dep "child" { nice -15 }
+            }
+            child { - "echo child" }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.tasks[0].deps[0].nice, Some(-15));
+}
+
+#[test]
+fn dep_nice_absent() {
+    let cfg = Config::from_kdl_str(
+        r#"tasks {
+            parent {
+                - "echo parent"
+                dep "child"
+            }
+            child { - "echo child" }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.tasks[0].deps[0].nice, None);
 }
 
 // ===================================================================

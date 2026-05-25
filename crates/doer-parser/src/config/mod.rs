@@ -7,7 +7,7 @@ mod helper;
 
 use crate::prelude::*;
 use anyhow::anyhow;
-use doer_spec::{EnvVar, Runnable, StdIo as SpecStdIo};
+use doer_spec::{EnvVar, NICE_MAX, NICE_MIN, Runnable, SpecIo, VALID_STDIO_VALUES};
 use helper::*;
 use kdl::{KdlDocument, KdlNode};
 use kdl_ext::*;
@@ -43,6 +43,8 @@ pub struct Task {
     pub stderr: Option<String>,
     #[builder(default)]
     pub stdout: Option<String>,
+    #[builder(default)]
+    pub nice: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,6 +68,7 @@ pub struct Dep {
     pub stdin: Option<String>,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
+    pub nice: Option<i32>,
 }
 
 impl Task {
@@ -158,15 +161,15 @@ impl Task {
             .collect()
     }
 
-    pub fn build_stdin(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<SpecStdIo> {
+    pub fn build_stdin(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<SpecIo> {
         self.build_stdio_field(&self.stdin, args, opt_overrides, "stdin")
     }
 
-    pub fn build_stdout(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<SpecStdIo> {
+    pub fn build_stdout(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<SpecIo> {
         self.build_stdio_field(&self.stdout, args, opt_overrides, "stdout")
     }
 
-    pub fn build_stderr(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<SpecStdIo> {
+    pub fn build_stderr(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<SpecIo> {
         self.build_stdio_field(&self.stderr, args, opt_overrides, "stderr")
     }
 
@@ -176,17 +179,17 @@ impl Task {
         args: &[String],
         opt_overrides: &HashMap<String, OptValue>,
         label: &str,
-    ) -> Result<SpecStdIo> {
+    ) -> Result<SpecIo> {
         let Some(raw) = field else {
-            return Ok(SpecStdIo::default());
+            return Ok(SpecIo::default());
         };
         let ctx = self.substitution_context(opt_overrides);
         let resolved = raw.resolve_template(&ctx)?.resolve_args(args, &format!("{label} template"))?;
-        SpecStdIo::try_from(resolved.as_str()).map_err(|e| anyhow::anyhow!("{}", e)).with_context(|| {
+        SpecIo::try_from(resolved.as_str()).map_err(|e| anyhow::anyhow!("{}", e)).with_context(|| {
             format!(
                 "task '{}': invalid {label} value after resolution: '{resolved}', possible values: [{}]",
                 self.name,
-                SpecStdIo::valid_string_values().join(", ")
+                VALID_STDIO_VALUES.join(", ")
             )
         })
     }
@@ -222,6 +225,7 @@ impl Task {
             stdin: resolve_stdio(&dep.stdin)?,
             stdout: resolve_stdio(&dep.stdout)?,
             stderr: resolve_stdio(&dep.stderr)?,
+            nice: dep.nice,
         })
     }
 }
@@ -235,6 +239,7 @@ pub struct TaskCall<'a> {
     pub stdin: Option<String>,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
+    pub nice: Option<i32>,
 }
 
 pub struct DepResolution {
@@ -245,6 +250,7 @@ pub struct DepResolution {
     pub stdin: Option<String>,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
+    pub nice: Option<i32>,
 }
 
 impl Config {
@@ -269,6 +275,7 @@ impl Config {
             None,
             None,
             None,
+            None,
             &mut resolved,
             &mut resolved_set,
             &mut resolving,
@@ -284,6 +291,7 @@ impl Config {
         args: Vec<String>,
         opt_overrides: HashMap<String, OptValue>,
         background: bool,
+        nice: Option<i32>,
         stdin: Option<String>,
         stdout: Option<String>,
         stderr: Option<String>,
@@ -310,6 +318,7 @@ impl Config {
                 r.args,
                 r.opt_overrides,
                 r.background,
+                r.nice,
                 r.stdin,
                 r.stdout,
                 r.stderr,
@@ -324,6 +333,7 @@ impl Config {
             args,
             opt_overrides,
             background,
+            nice: nice.or(task.nice),
             stdin,
             stdout,
             stderr,
@@ -365,6 +375,7 @@ impl Config {
                     .stdout(stdout)
                     .stderr(stderr)
                     .background(call.background)
+                    .nice(call.nice)
                     .build();
 
                 Ok(runnable)
@@ -413,6 +424,7 @@ impl Config {
             let cwd = parse_optional_string(node, &name, "cwd")?;
             let env_vars = parse_env_vars(node, &name)?;
             let (stdin, stdout, stderr) = parse_stdio(node, &name)?;
+            let nice = parse_optional_integer(node, &name, "nice")?;
 
             tasks.push(Task {
                 name,
@@ -426,6 +438,7 @@ impl Config {
                 stdin,
                 stdout,
                 stderr,
+                nice,
             });
         }
 
@@ -543,6 +556,7 @@ pub fn parse_dep(node: &KdlNode) -> Result<Dep> {
     }?;
     let background = parse_dep_background(node)?;
     let (stdin, stdout, stderr) = parse_dep_stdio(node, &name)?;
+    let nice = parse_dep_nice(node, &name)?;
 
     Ok(Dep {
         name,
@@ -552,6 +566,7 @@ pub fn parse_dep(node: &KdlNode) -> Result<Dep> {
         stdin,
         stdout,
         stderr,
+        nice,
     })
 }
 
@@ -607,12 +622,79 @@ fn parse_dep_background(node: &KdlNode) -> Result<bool> {
     }
 }
 
+fn parse_dep_nice(node: &KdlNode, dep_name: &str) -> Result<Option<i32>> {
+    let Some(children) = node.children() else {
+        return Ok(None);
+    };
+    let nice_nodes = children.nodes_by_name("nice");
+    if nice_nodes.is_empty() {
+        return Ok(None);
+    }
+    ensure!(
+        nice_nodes.len() == 1,
+        "dep '{dep_name}': expected at most 1 nice node, got {}",
+        nice_nodes.len()
+    );
+    let nice = nice_nodes[0];
+    ensure_entries_count(nice, 1, "nice").with_context(|| format!("dep '{dep_name}'"))?;
+    let entry = nice.first_entry().context(format!("dep '{dep_name}': nice has no entry"))?;
+    let raw = entry.value().as_integer().with_context(|| format!("dep '{dep_name}': nice value is not an integer"))?;
+    let val = i32::try_from(raw)
+        .map_err(|_| anyhow!("dep '{dep_name}': nice value {raw} is out of range (valid: {NICE_MIN}..={NICE_MAX})"))?;
+    ensure!(
+        (NICE_MIN..=NICE_MAX).contains(&val),
+        "dep '{dep_name}': nice value {val} is out of range (valid: {NICE_MIN}..={NICE_MAX})"
+    );
+    Ok(Some(val))
+}
+
 pub fn parse_dep_arg(node: &KdlNode, dep_name: &str) -> Result<String> {
     ensure_entries_count(node, 1, "dep arg").with_context(|| format!("dep '{}'", dep_name))?;
     node.first_string().with_context(|| format!("dep '{}': arg value is not a string", dep_name)).map(|s| s.to_string())
 }
 
 // ---- user / cwd ----
+
+pub fn parse_optional_integer(node: &KdlNode, task_name: &str, field: &str) -> Result<Option<i32>> {
+    let Some(children) = node.children() else {
+        return Ok(None);
+    };
+    let nodes = children.nodes_by_name(field);
+    ensure!(
+        nodes.len() <= 1,
+        "task '{}': expected at most 1 {} node, got {}",
+        task_name,
+        field,
+        nodes.len()
+    );
+    match nodes.first() {
+        Some(n) => {
+            ensure_entries_count(n, 1, field).with_context(|| format!("task '{}'", task_name))?;
+            let entry = n.first_entry().context(format!("task '{}': {} has no entry", task_name, field))?;
+            let raw = entry
+                .value()
+                .as_integer()
+                .with_context(|| format!("task '{}': {} value is not an integer", task_name, field))?;
+            let val = i32::try_from(raw).map_err(|_| {
+                anyhow::anyhow!(
+                    "task '{}': {} value {} is out of range (valid: {NICE_MIN}..={NICE_MAX})",
+                    task_name,
+                    field,
+                    raw
+                )
+            })?;
+            ensure!(
+                (NICE_MIN..=NICE_MAX).contains(&val),
+                "task '{}': {} value {} is out of range (valid: {NICE_MIN}..={NICE_MAX})",
+                task_name,
+                field,
+                val
+            );
+            Ok(Some(val))
+        }
+        None => Ok(None),
+    }
+}
 
 pub fn parse_optional_string(node: &KdlNode, task_name: &str, field: &str) -> Result<Option<String>> {
     let Some(children) = node.children() else {
@@ -670,11 +752,11 @@ pub fn parse_env_var(node: &KdlNode, task_name: &str) -> Result<EnvVar> {
 
 // ---- stdio ----
 
-pub fn parse_spec_stdio(raw: &str, label: &str, task_name: &str) -> Result<SpecStdIo> {
-    SpecStdIo::try_from(raw).map_err(|e| anyhow::anyhow!("{}", e)).with_context(|| {
+pub fn parse_spec_stdio(raw: &str, label: &str, task_name: &str) -> Result<SpecIo> {
+    SpecIo::try_from(raw).map_err(|e| anyhow::anyhow!("{}", e)).with_context(|| {
         format!(
             "task '{task_name}': invalid {label} value: '{raw}', possible values: [{}]",
-            SpecStdIo::valid_string_values().join(", ")
+            VALID_STDIO_VALUES.join(", ")
         )
     })
 }
