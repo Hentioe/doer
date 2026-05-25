@@ -86,8 +86,10 @@ cargo 1.95.0
 克隆本仓库到本地，运行 Cargo 命令：
 
 ```sh
-cargo install --path crates/doer
+cargo run -- install
 ```
+
+_这个命令会调用 doer 自身功能来执行安装任务，其中有一个步骤需要 `root` 权限给予 `CAP_SYS_NICE` 能力（用于调整 nice 值）。_
 
 ## 许可
 

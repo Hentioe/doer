@@ -52,18 +52,12 @@ tasks {
         dep format
     }
     cleanup "cargo clean"
-    install {
-        - "cargo install --path {path} --bin {bin}"
-        arg path
-        opt bin=doer
-        dep test
-    }
     run {
         - "cargo run --bin {bin}"
         arg bin
         dep build
         dep setcap {
-            arg "{bin}"
+            arg "target/debug/{bin}"
         }
     }
     release {
@@ -71,18 +65,28 @@ tasks {
         arg bin
         dep test
         dep setcap {
-            arg "{bin}"
-            opt mode=release
+            arg "target/release/{bin}"
         }
         env {
             RUST_BACKTRACE full
         }
     }
+    install {
+        dep cargo-install {
+            arg "crates/doer"
+        }
+        dep setcap {
+            arg "$(which doer)"
+        }
+    }
+    cargo-install {
+        - "cargo install --path {path}"
+        arg path
+        dep test
+    }
     setcap {
-        - "setcap 'cap_sys_nice=+ep' {bin}"
-        cwd "target/{mode}"
-        arg bin
-        opt mode=debug
+        - "setcap 'cap_sys_nice=+ep' {path}"
+        arg path
         user root
     }
 }
