@@ -53,11 +53,11 @@ tasks {
     }
     cleanup "cargo clean"
     run {
-        - "cargo run --bin {bin}"
-        arg bin
+        - "target/{mode}/doer {*}"
+        opt mode=debug
         dep build
         dep setcap {
-            arg "target/debug/{bin}"
+            arg "target/{mode}/doer"
         }
     }
     release {

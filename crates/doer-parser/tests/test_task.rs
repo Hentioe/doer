@@ -577,6 +577,53 @@ fn build_extra_args_ignored() {
     );
 }
 
+// ===================================================================
+// build_commands — remaining args ({*})
+// ===================================================================
+
+#[test]
+fn build_remaining_args_none() {
+    let t = task("cmd", "cmd {a} {*}", vec!["a"], vec![]);
+    assert_eq!(t.build_commands(&[s("x")], &no_overrides()).unwrap(), vec!["cmd x"]);
+}
+
+#[test]
+fn build_remaining_args_some() {
+    let t = task("cmd", "cmd {a} {*}", vec!["a"], vec![]);
+    assert_eq!(
+        t.build_commands(&[s("x"), s("--verbose"), s("--offline")], &no_overrides()).unwrap(),
+        vec!["cmd x --verbose --offline"]
+    );
+}
+
+#[test]
+fn build_remaining_args_with_opts() {
+    let t = task("cmd", "cmd --{mode} {a} {*}", vec!["a"], vec![("mode", "release")]);
+    assert_eq!(
+        t.build_commands(&[s("foo"), s("--bar")], &no_overrides()).unwrap(),
+        vec!["cmd --release foo --bar"]
+    );
+}
+
+#[test]
+fn build_remaining_args_no_named_arg() {
+    let t = task("cmd", "cmd {*}", vec![], vec![]);
+    assert_eq!(
+        t.build_commands(&[s("--verbose"), s("--offline")], &no_overrides()).unwrap(),
+        vec!["cmd --verbose --offline"]
+    );
+}
+
+// ===================================================================
+// command_template — remaining args
+// ===================================================================
+
+#[test]
+fn command_template_remaining() {
+    let t = task("cmd", "cmd {a} {*}", vec!["a"], vec![]);
+    assert_eq!(t.command_template(&no_overrides()).unwrap(), vec!["cmd {0} {*}"]);
+}
+
 #[test]
 fn build_keeps_opts_without_args() {
     let t = task("build", "cargo build --{mode}", vec![], vec![("mode", "release")]);

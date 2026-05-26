@@ -129,7 +129,15 @@ impl Task {
     }
 
     pub fn build_commands(&self, args: &[String], opt_overrides: &HashMap<String, OptValue>) -> Result<Vec<String>> {
-        self.commands.iter().map(|cmd| cmd.resolve_both(&self.substitution_context(opt_overrides), args)).collect()
+        let ctx = self.substitution_context(opt_overrides);
+        let remaining = args.get(self.args.len()..).unwrap_or(&[]);
+        self.commands
+            .iter()
+            .map(|cmd| {
+                let resolved = cmd.resolve_both(&ctx, args)?;
+                Ok(resolve_remaining_str(&resolved, remaining))
+            })
+            .collect()
     }
 
     pub fn cwd_template(&self, opt_overrides: &HashMap<String, OptValue>) -> Result<Option<String>> {

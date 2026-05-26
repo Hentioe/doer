@@ -44,12 +44,18 @@ where
 fn resolve_template_str(template: &str, ctx: &HashMap<String, String>) -> Result<String> {
     apply_template(template, "template", |name| {
         ensure!(!name.is_empty(), "empty placeholder '{{}}' in template");
+        if name == "*" {
+            return Ok("{*}".to_string());
+        }
         ctx.get(name).with_context(|| format!("undefined variable '{{{name}}}' in template")).cloned()
     })
 }
 
 fn resolve_args_str(template: &str, args: &[String], label: &str) -> Result<String> {
     apply_template(template, label, |num_str| {
+        if num_str == "*" {
+            return Ok("{*}".to_string());
+        }
         let index: usize =
             num_str.parse().with_context(|| format!("invalid positional placeholder '{{{num_str}}}' in {label}"))?;
         args.get(index)
@@ -61,6 +67,22 @@ fn resolve_args_str(template: &str, args: &[String], label: &str) -> Result<Stri
             })
             .cloned()
     })
+}
+
+pub fn resolve_remaining_str(template: &str, remaining: &[String]) -> String {
+    if remaining.is_empty() {
+        // 如果是空的，先去掉 {*}，再移除前一个空白字符
+        let mut result = template.to_string();
+        while let Some(pos) = result.find("{*}") {
+            result.replace_range(pos..pos + 3, "");
+            if pos > 0 && result[..pos].ends_with(|c: char| c.is_ascii_whitespace()) {
+                result.remove(pos - 1);
+            }
+        }
+        result
+    } else {
+        template.replace("{*}", &remaining.join(" "))
+    }
 }
 
 /// 可通过 substitution_context 和参数值列表分两阶段渲染的类型。
