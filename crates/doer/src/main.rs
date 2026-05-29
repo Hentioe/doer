@@ -12,6 +12,12 @@ async fn run() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config(&cli.config)?;
 
+    if cli.tasks {
+        // 简单打印任务列表，一行一个任务名称，仅此而已（供外部补全调用）
+        simple_print_task_list(&config.tasks);
+        return Ok(());
+    }
+
     match cli.task {
         None => {
             println!("Usage: {PACKAGE_NAME} [TASK] [ARGS] [OPTS]...\n");
@@ -52,6 +58,12 @@ async fn main() {
     if let Err(err) = run().await {
         report_error(&err);
         std::process::exit(1);
+    }
+}
+
+fn simple_print_task_list(tasks: &[Task]) {
+    for task in tasks {
+        println!("{}", task.name);
     }
 }
 
